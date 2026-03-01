@@ -318,12 +318,15 @@ async def show_pricing(callback: CallbackQuery):
     pricing_text = "💰 **Выберите тариф:**\n\n"
     
     for plan_id, plan in PLANS.items():
-        pricing_text += f"**{plan['name']} — {plan['price']}**"
+        pricing_text += f"━━━━━━━━━━━━━━━\n"
+        pricing_text += f"📦 **{plan['name']}**\n"
+        pricing_text += f"💵 **{plan['price']}**"
         if "badge" in plan:
             pricing_text += f" {plan['badge']}"
-        pricing_text += "\n"
+        pricing_text += "\n\n"
         pricing_text += "\n".join(plan['features'])
         pricing_text += "\n\n"
+    pricing_text += "━━━━━━━━━━━━━━━"
     
     await callback.message.edit_text(pricing_text, reply_markup=get_pricing_keyboard())
     await callback.answer()
