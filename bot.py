@@ -61,6 +61,10 @@ class Onboarding(StatesGroup):
     waiting_for_business_name = State()
     waiting_for_niche = State()
     waiting_for_description = State()
+    waiting_for_phone = State()
+    waiting_for_address = State()
+    waiting_for_schedule = State()
+    waiting_for_services = State()
 
 # Тарифы
 PLANS = {
@@ -556,10 +560,61 @@ async def onboarding_niche(callback: CallbackQuery, state: FSMContext):
 
 
 @router.message(StateFilter(Onboarding.waiting_for_description))
+async def onboarding_description(message: Message, state: FSMContext):
+    """Сбор описания → спрашиваем телефон"""
+    await state.update_data(description=message.text)
+    await message.answer("📞 <b>Контактный телефон вашего бизнеса:</b>\n\nНапример: +995 555 123456")
+    await state.set_state(Onboarding.waiting_for_phone)
+
+
+@router.message(StateFilter(Onboarding.waiting_for_phone))
+async def onboarding_phone(message: Message, state: FSMContext):
+    """Сбор телефона → спрашиваем адрес"""
+    await state.update_data(phone=message.text)
+    await message.answer("📍 <b>Адрес вашего бизнеса:</b>\n\nНапример: ул. Руставели 15, Тбилиси\n\nЕсли онлайн-бизнес — напишите «онлайн»")
+    await state.set_state(Onboarding.waiting_for_address)
+
+
+@router.message(StateFilter(Onboarding.waiting_for_address))
+async def onboarding_address(message: Message, state: FSMContext):
+    """Сбор адреса → спрашиваем расписание"""
+    await state.update_data(address=message.text)
+    await message.answer("🕐 <b>Режим работы:</b>\n\nНапример: Пн-Пт 9:00-18:00, Сб 10:00-15:00")
+    await state.set_state(Onboarding.waiting_for_schedule)
+
+
+@router.message(StateFilter(Onboarding.waiting_for_schedule))
+async def onboarding_schedule(message: Message, state: FSMContext):
+    """Сбор расписания → спрашиваем услуги"""
+    await state.update_data(schedule=message.text)
+    await message.answer(
+        "📋 <b>Перечислите основные услуги/товары с ценами:</b>\n\n"
+        "По одной на строку, например:\n"
+        "<i>Стрижка мужская — 30 лари\n"
+        "Маникюр — 40 лари\n"
+        "Укладка — 25 лари</i>"
+    )
+    await state.set_state(Onboarding.waiting_for_services)
+
+
+@router.message(StateFilter(Onboarding.waiting_for_services))
 async def onboarding_complete(message: Message, state: FSMContext):
-    """Завершение онбординга"""
+    """Завершение онбординга — все данные собраны"""
+    # Парсим услуги
+    services_text = message.text
+    services = []
+    for line in services_text.strip().split('\n'):
+        line = line.strip()
+        if '—' in line or '-' in line:
+            sep = '—' if '—' in line else '-'
+            parts = line.split(sep, 1)
+            services.append({'name': parts[0].strip(), 'price': parts[1].strip() if len(parts) > 1 else ''})
+        elif line:
+            services.append({'name': line, 'price': ''})
+    
     data = await state.get_data()
-    data['description'] = message.text
+    data['services'] = services
+    data['services_raw'] = services_text
     data['user_id'] = message.from_user.id
     data['username'] = message.from_user.username
     data['timestamp'] = datetime.now().isoformat()
@@ -579,6 +634,9 @@ async def onboarding_complete(message: Message, state: FSMContext):
     with open(onboarding_file, 'w', encoding='utf-8') as f:
         json.dump(onboardings, f, ensure_ascii=False, indent=2)
     
+    # Формируем сводку услуг
+    services_summary = '\n'.join([f"  • {s['name']}: {s['price']}" for s in services]) or 'Не указаны'
+    
     # Уведомление админа о завершении онбординга
     admin_message = f"""✅ <b>Онбординг завершён!</b>
 
@@ -587,7 +645,14 @@ async def onboarding_complete(message: Message, state: FSMContext):
 📦 Тариф: {PLANS[data['plan']]['name']}
 🏢 Бизнес: {data['business_name']}
 🎯 Ниша: {data['niche']}
-📝 Описание: {data['description']}"""
+📝 Описание: {data['description']}
+📞 Телефон: {data.get('phone', '—')}
+📍 Адрес: {data.get('address', '—')}
+🕐 Режим: {data.get('schedule', '—')}
+📋 Услуги:
+{services_summary}
+
+🔧 <i>Данные готовы для Bot Factory</i>"""
     
     try:
         await bot.send_message(ADMIN_CHAT_ID, admin_message)
@@ -596,16 +661,21 @@ async def onboarding_complete(message: Message, state: FSMContext):
     
     # Финальное сообщение пользователю
     await message.answer(
-        f"""✅ <b>Отлично! Всё готово для запуска.</b>
+        f"""✅ <b>Отлично! Все данные собраны.</b>
 
-🏢 Бизнес: {data['business_name']}
-🎯 Ниша: {data['niche']}
+🏢 {data['business_name']}
+🎯 {data['niche']}
+📞 {data.get('phone', '—')}
+📍 {data.get('address', '—')}
 
-⏱ <b>Через 24 часа</b> ваш AI-ассистент будет готов!
+⏱ <b>В течение 24 часов</b> ваш AI-ассистент будет готов!
 
-Мы настроим его на основе ваших данных и пришлём инструкцию по подключению.
+Вы получите:
+• Ссылку на вашего Telegram-бота
+• Инструкцию по подключению
+• Виджет для сайта (если нужен)
 
-📞 Если появятся вопросы — пишите прямо сюда, я на связи 24/7!""",
+📞 Если появятся вопросы — пишите прямо сюда!""",
         reply_markup=get_main_menu()
     )
     
