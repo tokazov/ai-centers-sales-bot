@@ -1,0 +1,4 @@
+-e .env
+leads.json
+onboarding.json
+__pycache__

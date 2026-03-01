@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  sales-bot:
+    build: .
+    container_name: ai-centers-sales-bot
+    restart: unless-stopped
+    environment:
+      - BOT_TOKEN=${BOT_TOKEN}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - ADMIN_CHAT_ID=${ADMIN_CHAT_ID:-5309206282}
+    volumes:
+      - ./data:/app/data
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
