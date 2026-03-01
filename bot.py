@@ -41,7 +41,7 @@ LEADS_FILE = "leads.json"
 
 # Инициализация Gemini
 genai.configure(api_key=GEMINI_API_KEY)
-gemini_model = genai.GenerativeModel('gemini-2.0-flash-exp')
+gemini_model = genai.GenerativeModel('gemini-2.5-flash')
 
 # System prompt для AI-чата
 SALES_PROMPT = """Ты продажник AI Centers. Продаёшь AI-ассистентов для бизнеса. 
@@ -97,7 +97,7 @@ PLANS = {
             "✓ Безлимит сообщений",
             "✓ WhatsApp интеграция",
             "✓ Кастомизация промпта",
-            "✓ Персональный менеджер"
+            "✓ Приоритетная поддержка 24/7"
         ]
     },
     "enterprise": {
