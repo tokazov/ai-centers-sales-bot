@@ -126,7 +126,7 @@ NICHES = [
 ]
 
 FAQ_ANSWERS = {
-    "how_it_works": """🔧 **Как это работает?**
+    "how_it_works": """🔧 <b>Как это работает?</b>
 
 1. Вы выбираете тариф и оплачиваете
 2. Заполняете информацию о бизнесе (5 минут)
@@ -136,25 +136,25 @@ FAQ_ANSWERS = {
 
 Бот отвечает клиентам 24/7, записывает на услуги, консультирует и передаёт заявки вам.""",
     
-    "pricing": """💰 **Сколько стоит?**
+    "pricing": """💰 <b>Сколько стоит?</b>
 
-📦 **Starter** — $15/мес  
+📦 <b>Starter</b> — $15/мес  
 Идеально для старта
 
-📦 **Business** — $49/мес ⭐  
+📦 <b>Business</b> — $49/мес ⭐  
 Самый популярный! Для активного бизнеса
 
-📦 **Pro** — $99/мес  
+📦 <b>Pro</b> — $99/мес  
 Для масштаба + WhatsApp
 
-📦 **Enterprise** — $149/мес  
+📦 <b>Enterprise</b> — $149/мес  
 Полный комплект + голосовой AI
 
 Все тарифы — без скрытых комиссий. Настройка включена.""",
     
-    "speed": """⚡ **Как быстро запустите?**
+    "speed": """⚡ <b>Как быстро запустите?</b>
 
-✅ **24 часа** с момента оплаты!
+✅ <b>24 часа</b> с момента оплаты!
 
 Процесс:
 • 0 часов — оплатили и заполнили данные
@@ -164,7 +164,7 @@ FAQ_ANSWERS = {
 
 Поддержка 24/7 даже на минимальном тарифе.""",
     
-    "niches": """🎯 **Какие ниши поддерживаете?**
+    "niches": """🎯 <b>Какие ниши поддерживаете?</b>
 
 Топ-ниши (готовые шаблоны):
 • Рестораны и кафе
@@ -174,14 +174,14 @@ FAQ_ANSWERS = {
 • Фитнес-клубы
 • Медицинские клиники
 
-Но мы настраиваем под **любой бизнес**:
+Но мы настраиваем под <b>любой бизнес</b>:
 Автосервисы, юристы, агентства недвижимости, школы, магазины — всё что угодно!
 
 AI учится на вашем описании за пару часов.""",
     
-    "trial": """🎁 **Можно попробовать бесплатно?**
+    "trial": """🎁 <b>Можно попробовать бесплатно?</b>
 
-Да! У нас есть **демо-бот**:
+Да! У нас есть <b>демо-бот</b>:
 👉 @aicenters_demo_bot
 
 Там вы можете:
@@ -196,7 +196,7 @@ AI учится на вашем описании за пару часов.""",
 
 
 # Инициализация бота
-bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.MARKDOWN))
+bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 storage = MemoryStorage()
 dp = Dispatcher(storage=storage)
 router = Router()
@@ -279,7 +279,7 @@ async def cmd_start(message: Message, state: FSMContext):
     """Обработка команды /start"""
     await state.clear()
     
-    welcome_text = """👋 **Привет! Я AI Centers** — мы создаём умных AI-ассистентов для бизнеса за 24 часа.
+    welcome_text = """👋 <b>Привет! Я AI Centers</b> — мы создаём умных AI-ассистентов для бизнеса за 24 часа.
 
 Что вас интересует?"""
     
@@ -292,7 +292,7 @@ async def back_to_menu(callback: CallbackQuery, state: FSMContext):
     """Возврат в главное меню"""
     await state.clear()
     
-    welcome_text = """👋 **Привет! Я AI Centers** — мы создаём умных AI-ассистентов для бизнеса за 24 часа.
+    welcome_text = """👋 <b>Привет! Я AI Centers</b> — мы создаём умных AI-ассистентов для бизнеса за 24 часа.
 
 Что вас интересует?"""
     
@@ -303,7 +303,7 @@ async def back_to_menu(callback: CallbackQuery, state: FSMContext):
 @router.callback_query(F.data == "demo")
 async def show_demo(callback: CallbackQuery):
     """Показ демо"""
-    demo_text = """🎯 **Попробуйте нашего демо-бота!**
+    demo_text = """🎯 <b>Попробуйте нашего демо-бота!</b>
 
 Выберите нишу и пообщайтесь как клиент:
 👉 @aicenters_demo_bot
@@ -317,12 +317,12 @@ async def show_demo(callback: CallbackQuery):
 @router.callback_query(F.data == "pricing")
 async def show_pricing(callback: CallbackQuery):
     """Показ тарифов"""
-    pricing_text = "💰 **Выберите тариф:**\n\n"
+    pricing_text = "💰 <b>Выберите тариф:</b>\n\n"
     
     for plan_id, plan in PLANS.items():
         pricing_text += f"━━━━━━━━━━━━━━━\n"
-        pricing_text += f"📦 **{plan['name']}**\n"
-        pricing_text += f"💵 **{plan['price']}**"
+        pricing_text += f"📦 <b>{plan['name']}</b>\n"
+        pricing_text += f"💵 <b>{plan['price']}</b>"
         if "badge" in plan:
             pricing_text += f" {plan['badge']}"
         pricing_text += "\n\n"
@@ -337,7 +337,7 @@ async def show_pricing(callback: CallbackQuery):
 @router.callback_query(F.data == "contact")
 async def start_contact_form(callback: CallbackQuery, state: FSMContext):
     """Начало формы связи"""
-    await callback.message.edit_text("📝 Отлично! Давайте познакомимся.\n\n**Как вас зовут?**")
+    await callback.message.edit_text("📝 Отлично! Давайте познакомимся.\n\n<b>Как вас зовут?</b>")
     await state.set_state(ContactForm.waiting_for_name)
     await callback.answer()
 
@@ -345,7 +345,7 @@ async def start_contact_form(callback: CallbackQuery, state: FSMContext):
 @router.callback_query(F.data == "faq")
 async def show_faq(callback: CallbackQuery):
     """Показ FAQ"""
-    faq_text = "❓ **Часто задаваемые вопросы:**\n\nВыберите интересующий вопрос:"
+    faq_text = "❓ <b>Часто задаваемые вопросы:</b>\n\nВыберите интересующий вопрос:"
     await callback.message.edit_text(faq_text, reply_markup=get_faq_keyboard())
     await callback.answer()
 
@@ -365,7 +365,7 @@ async def show_faq_answer(callback: CallbackQuery):
 async def process_name(message: Message, state: FSMContext):
     """Обработка имени"""
     await state.update_data(name=message.text)
-    await message.answer("Отлично! **Как называется ваш бизнес?**")
+    await message.answer("Отлично! <b>Как называется ваш бизнес?</b>")
     await state.set_state(ContactForm.waiting_for_business)
 
 
@@ -373,7 +373,7 @@ async def process_name(message: Message, state: FSMContext):
 async def process_business(message: Message, state: FSMContext):
     """Обработка названия бизнеса"""
     await state.update_data(business=message.text)
-    await message.answer("**В какой нише вы работаете?**", reply_markup=get_niche_keyboard())
+    await message.answer("<b>В какой нише вы работаете?</b>", reply_markup=get_niche_keyboard())
     await state.set_state(ContactForm.waiting_for_niche)
 
 
@@ -384,7 +384,7 @@ async def process_niche(callback: CallbackQuery, state: FSMContext):
     niche_name = next((name for code, name in NICHES if code == niche_code), "Неизвестно")
     
     await state.update_data(niche=niche_name)
-    await callback.message.edit_text("**Как с вами связаться?**\n\nНапишите номер телефона или Telegram-аккаунт:")
+    await callback.message.edit_text("<b>Как с вами связаться?</b>\n\nНапишите номер телефона или Telegram-аккаунт:")
     await state.set_state(ContactForm.waiting_for_contact)
     await callback.answer()
 
@@ -401,7 +401,7 @@ async def process_contact(message: Message, state: FSMContext):
     save_lead(data)
     
     # Уведомление админа
-    admin_message = f"""🆕 **Новая заявка!**
+    admin_message = f"""🆕 <b>Новая заявка!</b>
 
 👤 Имя: {data['name']}
 🏢 Бизнес: {data['business']}
@@ -417,7 +417,7 @@ async def process_contact(message: Message, state: FSMContext):
     
     # Ответ пользователю
     await message.answer(
-        f"""✅ **Спасибо, {data['name']}!**
+        f"""✅ <b>Спасибо, {data['name']}!</b>
 
 Ваша заявка принята. Мы свяжемся с вами в ближайшее время по контакту: {data['contact']}
 
@@ -474,13 +474,13 @@ async def process_successful_payment(message: Message, state: FSMContext):
     plan = PLANS.get(plan_id)
     
     # Благодарность
-    success_text = f"""🎉 **Спасибо за покупку!**
+    success_text = f"""🎉 <b>Спасибо за покупку!</b>
 
-Вы подключили тариф **{plan['name']}**.
+Вы подключили тариф <b>{plan['name']}</b>.
 
 Сейчас запустим процесс настройки вашего AI-ассистента.
 
-**Название вашего бизнеса?**"""
+<b>Название вашего бизнеса?</b>"""
     
     await message.answer(success_text)
     
@@ -489,7 +489,7 @@ async def process_successful_payment(message: Message, state: FSMContext):
     await state.set_state(Onboarding.waiting_for_business_name)
     
     # Уведомление админа
-    admin_message = f"""💰 **Новая оплата!**
+    admin_message = f"""💰 <b>Новая оплата!</b>
 
 💳 Тариф: {plan['name']}
 ⭐️ Сумма: {plan['stars']} Stars
@@ -508,7 +508,7 @@ async def process_successful_payment(message: Message, state: FSMContext):
 async def onboarding_business(message: Message, state: FSMContext):
     """Сбор названия бизнеса"""
     await state.update_data(business_name=message.text)
-    await message.answer("**В какой нише вы работаете?**", reply_markup=get_niche_keyboard())
+    await message.answer("<b>В какой нише вы работаете?</b>", reply_markup=get_niche_keyboard())
     await state.set_state(Onboarding.waiting_for_niche)
 
 
@@ -520,7 +520,7 @@ async def onboarding_niche(callback: CallbackQuery, state: FSMContext):
     
     await state.update_data(niche=niche_name)
     await callback.message.edit_text(
-        "**Расскажите о вашем бизнесе:**\n\n"
+        "<b>Расскажите о вашем бизнесе:</b>\n\n"
         "Опишите в 2-3 предложениях:\n"
         "• Что вы предлагаете\n"
         "• Ваши услуги\n"
@@ -555,7 +555,7 @@ async def onboarding_complete(message: Message, state: FSMContext):
         json.dump(onboardings, f, ensure_ascii=False, indent=2)
     
     # Уведомление админа о завершении онбординга
-    admin_message = f"""✅ **Онбординг завершён!**
+    admin_message = f"""✅ <b>Онбординг завершён!</b>
 
 👤 User: {message.from_user.full_name}
 🆔 User ID: {data['user_id']}
@@ -571,12 +571,12 @@ async def onboarding_complete(message: Message, state: FSMContext):
     
     # Финальное сообщение пользователю
     await message.answer(
-        f"""✅ **Отлично! Всё готово для запуска.**
+        f"""✅ <b>Отлично! Всё готово для запуска.</b>
 
 🏢 Бизнес: {data['business_name']}
 🎯 Ниша: {data['niche']}
 
-⏱ **Через 24 часа** ваш AI-ассистент будет готов!
+⏱ <b>Через 24 часа</b> ваш AI-ассистент будет готов!
 
 Мы настроим его на основе ваших данных и пришлём инструкцию по подключению.
 
