@@ -276,8 +276,33 @@ def get_back_keyboard():
 # Обработчики команд
 @router.message(Command("start"))
 async def cmd_start(message: Message, state: FSMContext):
-    """Обработка команды /start"""
+    """Обработка команды /start с поддержкой deeplinks"""
     await state.clear()
+    
+    # Проверяем deeplink параметр
+    args = message.text.split(maxsplit=1)
+    if len(args) > 1:
+        param = args[1]
+        # Deeplink на покупку: /start buy_starter, buy_business, buy_pro, buy_enterprise
+        if param.startswith("buy_"):
+            plan_id = param.replace("buy_", "")
+            plan = PLANS.get(plan_id)
+            if plan:
+                prices = [LabeledPrice(label=f"Тариф {plan['name']}", amount=plan['stars'])]
+                description = f"{plan['name']} — {plan['price']}\n" + "\n".join(plan['features'])
+                try:
+                    await bot.send_invoice(
+                        chat_id=message.chat.id,
+                        title=f"AI Centers — {plan['name']}",
+                        description=description,
+                        payload=f"plan_{plan_id}",
+                        provider_token="",
+                        currency="XTR",
+                        prices=prices
+                    )
+                    return
+                except Exception as e:
+                    logger.error(f"Deeplink invoice error: {e}")
     
     welcome_text = """👋 <b>Привет! Я AI Centers</b> — мы создаём умных AI-ассистентов для бизнеса за 24 часа.
 
