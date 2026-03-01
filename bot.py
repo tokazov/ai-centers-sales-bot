@@ -20,6 +20,8 @@ from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.enums import ParseMode
+from aiogram.client.default import DefaultBotProperties
 import google.generativeai as genai
 
 # Настройка логирования
@@ -194,7 +196,7 @@ AI учится на вашем описании за пару часов.""",
 
 
 # Инициализация бота
-bot = Bot(token=BOT_TOKEN)
+bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.MARKDOWN))
 storage = MemoryStorage()
 dp = Dispatcher(storage=storage)
 router = Router()
