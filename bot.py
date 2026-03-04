@@ -23,6 +23,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.enums import ParseMode
 from aiogram.client.default import DefaultBotProperties
 import google.generativeai as genai
+import aiohttp
 
 # Настройка логирования
 logging.basicConfig(
@@ -35,6 +36,7 @@ logger = logging.getLogger(__name__)
 BOT_TOKEN = os.getenv("BOT_TOKEN", "placeholder_token")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 ADMIN_CHAT_ID = int(os.getenv("ADMIN_CHAT_ID", "5309206282"))
+PLATFORM_API_URL = os.getenv("PLATFORM_API_URL", "https://platform-api-production-f313.up.railway.app")
 
 # Путь к файлу лидов
 LEADS_FILE = "leads.json"
@@ -659,25 +661,87 @@ async def onboarding_complete(message: Message, state: FSMContext):
     except Exception as e:
         logger.error(f"Не удалось отправить уведомление админу: {e}")
     
-    # Финальное сообщение пользователю
-    await message.answer(
-        f"""✅ <b>Отлично! Все данные собраны.</b>
+    # Автоматическое создание бота через Platform API
+    await message.answer("⏳ <b>Создаём вашего AI-ассистента...</b>\n\nЭто займёт 1-2 минуты.")
+    await bot.send_chat_action(message.chat.id, "typing")
+    
+    try:
+        # Формируем описание бизнеса для auto-setup
+        business_text = f"""
+Бизнес: {data['business_name']}
+Ниша: {data['niche']}
+Описание: {data.get('description', '')}
+Телефон: {data.get('phone', '')}
+Адрес: {data.get('address', '')}
+График работы: {data.get('schedule', '')}
+Услуги и цены:
+{data.get('services_raw', '')}
+"""
+        # Вызываем Platform API для создания бота
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"{PLATFORM_API_URL}/bots/auto-setup",
+                json={
+                    "text": business_text,
+                    "business_type": data.get('niche', 'general'),
+                    "language": "ru"
+                },
+                headers={"X-User-Id": str(message.from_user.id)},
+                timeout=aiohttp.ClientTimeout(total=120)
+            ) as resp:
+                if resp.status == 201:
+                    result = await resp.json()
+                    bot_username = result.get('bot_username', '')
+                    bot_link = f"https://t.me/{bot_username}" if bot_username else "скоро будет готов"
+                    
+                    await message.answer(
+                        f"""🎉 <b>Ваш AI-ассистент готов!</b>
+
+🏢 {data['business_name']}
+🤖 Бот: @{bot_username}
+🔗 Ссылка: {bot_link}
+
+<b>Что дальше:</b>
+1. Откройте бота и протестируйте
+2. Отправьте ссылку клиентам
+3. Добавьте бота на сайт (виджет)
+
+Нужны правки? Пишите — доработаем бесплатно!""",
+                        reply_markup=get_main_menu()
+                    )
+                    
+                    # Уведомление админа об успешном создании
+                    await bot.send_message(ADMIN_CHAT_ID, 
+                        f"🤖 <b>Бот создан автоматически!</b>\n\n"
+                        f"👤 {message.from_user.full_name}\n"
+                        f"🏢 {data['business_name']}\n"
+                        f"🤖 @{bot_username}\n"
+                        f"📦 {PLANS[data['plan']]['name']}")
+                else:
+                    error_text = await resp.text()
+                    logger.error(f"Platform API error {resp.status}: {error_text}")
+                    raise Exception(f"API returned {resp.status}")
+                    
+    except Exception as e:
+        logger.error(f"Auto-setup failed: {e}")
+        # Fallback — уведомляем админа для ручного создания
+        await message.answer(
+            f"""✅ <b>Данные собраны!</b>
 
 🏢 {data['business_name']}
 🎯 {data['niche']}
-📞 {data.get('phone', '—')}
-📍 {data.get('address', '—')}
 
-⏱ <b>В течение 24 часов</b> ваш AI-ассистент будет готов!
+⏱ Наш специалист создаст вашего AI-ассистента в течение <b>2 часов</b>.
+Вы получите ссылку на бота прямо сюда.
 
-Вы получите:
-• Ссылку на вашего Telegram-бота
-• Инструкцию по подключению
-• Виджет для сайта (если нужен)
-
-📞 Если появятся вопросы — пишите прямо сюда!""",
-        reply_markup=get_main_menu()
-    )
+📞 Вопросы? Пишите!""",
+            reply_markup=get_main_menu()
+        )
+        await bot.send_message(ADMIN_CHAT_ID, 
+            f"⚠️ <b>Auto-setup FAILED — нужно вручную!</b>\n\n"
+            f"👤 {message.from_user.full_name} (ID: {message.from_user.id})\n"
+            f"🏢 {data['business_name']}\n"
+            f"Ошибка: {e}")
     
     await state.clear()
 
