@@ -357,6 +357,14 @@ async def cmd_start(message: Message, state: FSMContext):
     args = message.text.split(maxsplit=1)
     if len(args) > 1:
         param = args[1]
+        
+        # Partner referral link: /start ref_XXXXXXXX
+        if param.startswith("ref_"):
+            ref_code = param.replace("ref_", "")
+            await state.update_data(ref_code=ref_code)
+            logger.info(f"Referral from partner: {ref_code}, user: {message.from_user.id}")
+        
+        # Direct buy deeplink: /start buy_starter
         if param.startswith("buy_"):
             plan_id = param.replace("buy_", "")
             plan = PLANS.get(plan_id)
@@ -372,6 +380,23 @@ async def cmd_start(message: Message, state: FSMContext):
                     return
                 except Exception as e:
                     logger.error(f"Deeplink invoice error: {e}")
+        
+        # Partner registration: /start partner
+        if param == "partner":
+            await message.answer(
+                "🤝 <b>Партнёрская программа AI Centers</b>\n\n"
+                "Зарабатывайте 20-50% с каждого клиента!\n\n"
+                "🥉 Bronze: 20% (старт)\n"
+                "🥈 Silver: 35% (от 5 продаж)\n"
+                "🥇 Gold: 50% (от 15 продаж)\n\n"
+                "📊 Подробнее: aicenters.co/partners\n\n"
+                "Чтобы стать партнёром, нажмите кнопку:",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="✅ Стать партнёром", callback_data="become_partner")],
+                    [InlineKeyboardButton(text="◀️ Назад", callback_data="back_to_menu")]
+                ])
+            )
+            return
     
     welcome = """👋 <b>AI Centers</b> — создаём AI-ассистентов для бизнеса.
 
@@ -647,11 +672,17 @@ async def process_successful_payment(message: Message, state: FSMContext):
     plan = PLANS.get(plan_id, PLANS["starter"])
     data = await state.get_data()
     
+    # Track partner referral if exists
+    ref_code = data.get("ref_code")
+    if ref_code:
+        await track_partner_referral(ref_code, message.from_user, plan_id, plan['stars_creation'])
+    
     # Admin notification
+    ref_info = f"\n🤝 Реферал: {ref_code}" if ref_code else ""
     admin_msg = (f"💰 <b>Оплата!</b>\n\n"
                  f"📦 {plan['name']} ({plan['stars_creation']} Stars)\n"
                  f"👤 {message.from_user.full_name}\n"
-                 f"🆔 {message.from_user.id} @{message.from_user.username or ''}")
+                 f"🆔 {message.from_user.id} @{message.from_user.username or ''}{ref_info}")
     try:
         await bot.send_message(ADMIN_CHAT_ID, admin_msg)
     except: pass
@@ -1070,6 +1101,88 @@ async def ai_chat(message: Message, state: FSMContext):
             "Произошла ошибка. Выберите действие из меню:",
             reply_markup=get_main_menu()
         )
+
+
+# ─── Partner Registration & Referral Tracking ───
+
+@router.callback_query(F.data == "become_partner")
+async def become_partner(callback: CallbackQuery):
+    """Register user as partner via Platform API."""
+    try:
+        async with aiohttp.ClientSession() as session:
+            # Auth first
+            auth_resp = await session.post(
+                f"{PLATFORM_API_URL}/auth/telegram",
+                json={
+                    "id": callback.from_user.id,
+                    "first_name": callback.from_user.first_name or "",
+                    "last_name": callback.from_user.last_name or "",
+                    "username": callback.from_user.username or "",
+                    "photo_url": "", "auth_date": int(datetime.now().timestamp()),
+                    "hash": "sales_bot_internal"
+                },
+                timeout=aiohttp.ClientTimeout(total=10)
+            )
+            auth_data = await auth_resp.json()
+            jwt = auth_data.get("access_token", "")
+            
+            # Register as partner
+            resp = await session.post(
+                f"{PLATFORM_API_URL}/partners/register",
+                json={"name": callback.from_user.full_name, "telegram_id": callback.from_user.id},
+                headers={"Authorization": f"Bearer {jwt}"},
+                timeout=aiohttp.ClientTimeout(total=10)
+            )
+            
+            if resp.status == 201 or resp.status == 200:
+                result = await resp.json()
+                ref_link = result.get("ref_link", "")
+                ref_code = result.get("ref_code", "")
+                
+                await callback.message.edit_text(
+                    f"🎉 <b>Вы стали партнёром AI Centers!</b>\n\n"
+                    f"🔗 Ваша реферальная ссылка:\n<code>{ref_link}</code>\n\n"
+                    f"📊 Комиссия: 20% (Bronze)\n"
+                    f"📈 Рост: 5 продаж → 35%, 15 продаж → 50%\n\n"
+                    f"Отправляйте ссылку клиентам. При каждой оплате — комиссия на ваш счёт!",
+                    reply_markup=get_back_keyboard()
+                )
+            elif resp.status == 409:
+                await callback.message.edit_text(
+                    "✅ Вы уже партнёр! Ваша ссылка в личном кабинете:\naicenters.co/partners",
+                    reply_markup=get_back_keyboard()
+                )
+            else:
+                raise Exception(f"API {resp.status}")
+                
+    except Exception as e:
+        logger.error(f"Partner registration failed: {e}")
+        await callback.message.edit_text(
+            "⚠️ Не удалось зарегистрироваться. Попробуйте позже или напишите @CARGORAPIDO",
+            reply_markup=get_back_keyboard()
+        )
+    await callback.answer()
+
+
+async def track_partner_referral(ref_code: str, user, plan_id: str, amount: int):
+    """Track referral via Platform API."""
+    try:
+        async with aiohttp.ClientSession() as session:
+            await session.post(
+                f"{PLATFORM_API_URL}/partners/track",
+                json={
+                    "ref_code": ref_code,
+                    "client_user_id": user.id,
+                    "client_name": user.full_name,
+                    "plan": plan_id,
+                    "amount": amount
+                },
+                headers={"X-Admin-Key": os.getenv("ADMIN_API_KEY", "aicenters_admin_2026")},
+                timeout=aiohttp.ClientTimeout(total=10)
+            )
+            logger.info(f"Referral tracked: ref={ref_code}, client={user.id}, plan={plan_id}")
+    except Exception as e:
+        logger.error(f"Referral tracking failed: {e}")
 
 
 # ─── Register & Run ───
