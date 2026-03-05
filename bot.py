@@ -10,6 +10,7 @@ import json
 import logging
 import asyncio
 import re
+import sqlite3
 from datetime import datetime
 from typing import Optional
 
@@ -35,8 +36,10 @@ logger = logging.getLogger(__name__)
 BOT_TOKEN = os.getenv("BOT_TOKEN", "placeholder_token")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 ADMIN_CHAT_ID = int(os.getenv("ADMIN_CHAT_ID", "5309206282"))
+TIMUR_CHAT_ID = 644024059  # Тимур — уведомления о платежах
 PLATFORM_API_URL = os.getenv("PLATFORM_API_URL", "https://platform-api-production-f313.up.railway.app")
 LEADS_FILE = "leads.json"
+PAYMENTS_DB = "payments.db"
 
 # ─── Gemini ───
 genai.configure(api_key=GEMINI_API_KEY)
@@ -82,8 +85,8 @@ PLANS = {
         "name": "Starter",
         "creation_price": "$99",
         "monthly_price": "$15/мес",
-        "stars_creation": 1000,
-        "stars_monthly": 150,
+        "stars_creation": 149,
+        "stars_monthly": 15,
         "features": [
             "✓ 1 AI-агент",
             "✓ Telegram канал",
@@ -95,8 +98,8 @@ PLANS = {
         "name": "Pro",
         "creation_price": "$199",
         "monthly_price": "$29/мес",
-        "stars_creation": 2000,
-        "stars_monthly": 300,
+        "stars_creation": 299,
+        "stars_monthly": 29,
         "badge": "⭐ Популярный",
         "features": [
             "✓ 3 AI-агента",
@@ -110,8 +113,8 @@ PLANS = {
         "name": "Business",
         "creation_price": "$399",
         "monthly_price": "$59/мес",
-        "stars_creation": 4000,
-        "stars_monthly": 600,
+        "stars_creation": 499,
+        "stars_monthly": 59,
         "features": [
             "✓ 10 AI-агентов",
             "✓ Голосовой AI",
@@ -124,8 +127,8 @@ PLANS = {
         "name": "Enterprise",
         "creation_price": "от $999",
         "monthly_price": "$149/мес",
-        "stars_creation": 10000,
-        "stars_monthly": 1500,
+        "stars_creation": 1499,
+        "stars_monthly": 149,
         "features": [
             "✓ Безлимит агентов",
             "✓ Свой API ключ",
@@ -238,6 +241,46 @@ def save_lead(lead_data: dict):
     leads.append(lead_data)
     with open(LEADS_FILE, 'w', encoding='utf-8') as f:
         json.dump(leads, f, ensure_ascii=False, indent=2)
+
+
+# ─── Payments DB ───
+def init_payments_db():
+    """Create payments table if not exists."""
+    conn = sqlite3.connect(PAYMENTS_DB)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS payments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            username TEXT,
+            full_name TEXT,
+            plan TEXT NOT NULL,
+            amount INTEGER NOT NULL,
+            currency TEXT DEFAULT 'XTR',
+            payload TEXT,
+            date TEXT NOT NULL,
+            status TEXT DEFAULT 'completed'
+        )
+    """)
+    conn.commit()
+    conn.close()
+    logger.info("Payments DB initialized")
+
+
+def save_payment(user_id: int, username: str, full_name: str, plan: str, amount: int, payload: str = ""):
+    """Save a completed payment to SQLite."""
+    try:
+        conn = sqlite3.connect(PAYMENTS_DB)
+        conn.execute(
+            "INSERT INTO payments (user_id, username, full_name, plan, amount, payload, date, status) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (user_id, username or "", full_name or "", plan, amount, payload,
+             datetime.now().isoformat(), "completed")
+        )
+        conn.commit()
+        conn.close()
+        logger.info(f"Payment saved: user={user_id}, plan={plan}, amount={amount} Stars")
+    except Exception as e:
+        logger.error(f"Failed to save payment: {e}")
 
 
 def is_url(text: str) -> bool:
@@ -483,18 +526,43 @@ AI создаст бота на основе всей информации с с
 
 @router.callback_query(StateFilter(URLSetup.waiting_for_plan_select), F.data.startswith("urlplan_"))
 async def url_plan_selected(callback: CallbackQuery, state: FSMContext):
-    """Plan selected for URL setup — send invoice."""
+    """Plan selected for URL setup — show Stars pay button."""
     plan_id = callback.data.replace("urlplan_", "")
     plan = PLANS.get(plan_id)
     if not plan:
         await callback.answer("❌ Тариф не найден", show_alert=True)
         return
-    
+
     await state.update_data(plan=plan_id)
-    
+
+    features_text = "\n".join(plan['features'])
+    badge = f" {plan['badge']}" if "badge" in plan else ""
+    text = (
+        f"📦 <b>{plan['name']}</b>{badge}\n"
+        f"💵 {plan['creation_price']} разово + {plan['monthly_price']}\n\n"
+        f"{features_text}\n\n"
+        f"💫 Оплата: <b>{plan['stars_creation']} Telegram Stars</b>"
+    )
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=f"💫 Оплатить {plan['stars_creation']} Stars", callback_data=f"url_pay_stars_{plan_id}")],
+        [InlineKeyboardButton(text="◀️ Назад к тарифам", callback_data="url_setup")]
+    ])
+    await callback.message.edit_text(text, reply_markup=keyboard)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("url_pay_stars_"))
+async def send_url_stars_invoice(callback: CallbackQuery, state: FSMContext):
+    """Send Stars invoice for URL setup flow."""
+    plan_id = callback.data.replace("url_pay_stars_", "")
+    plan = PLANS.get(plan_id)
+    if not plan:
+        await callback.answer("❌ Тариф не найден", show_alert=True)
+        return
+
     prices = [LabeledPrice(label=f"Создание {plan['name']}", amount=plan['stars_creation'])]
     desc = f"{plan['name']} — {plan['creation_price']} разово\n+ {plan['monthly_price']} абонплата\n\n" + "\n".join(plan['features'])
-    
+
     try:
         await bot.send_invoice(
             chat_id=callback.message.chat.id,
@@ -505,7 +573,7 @@ async def url_plan_selected(callback: CallbackQuery, state: FSMContext):
             currency="XTR",
             prices=prices
         )
-        await callback.answer("✨ Создан счёт на оплату")
+        await callback.answer("✨ Счёт создан!")
     except Exception as e:
         logger.error(f"URL plan invoice error: {e}")
         await callback.answer("❌ Ошибка. Попробуйте позже.", show_alert=True)
@@ -631,12 +699,37 @@ async def process_payment(callback: CallbackQuery, state: FSMContext):
     if not plan:
         await callback.answer("❌ Тариф не найден", show_alert=True)
         return
-    
+
     await state.update_data(plan=plan_id)
-    
+
+    features_text = "\n".join(plan['features'])
+    badge = f" {plan['badge']}" if "badge" in plan else ""
+    text = (
+        f"📦 <b>{plan['name']}</b>{badge}\n"
+        f"💵 {plan['creation_price']} разово + {plan['monthly_price']}\n\n"
+        f"{features_text}\n\n"
+        f"💫 Оплата: <b>{plan['stars_creation']} Telegram Stars</b>"
+    )
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=f"💫 Оплатить {plan['stars_creation']} Stars", callback_data=f"pay_stars_{plan_id}")],
+        [InlineKeyboardButton(text="◀️ Назад к тарифам", callback_data="pricing")]
+    ])
+    await callback.message.edit_text(text, reply_markup=keyboard)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("pay_stars_"))
+async def send_stars_invoice(callback: CallbackQuery, state: FSMContext):
+    """Send Telegram Stars invoice after user clicked the pay button."""
+    plan_id = callback.data.replace("pay_stars_", "")
+    plan = PLANS.get(plan_id)
+    if not plan:
+        await callback.answer("❌ Тариф не найден", show_alert=True)
+        return
+
     prices = [LabeledPrice(label=f"Создание {plan['name']}", amount=plan['stars_creation'])]
     desc = f"{plan['name']} — {plan['creation_price']} + {plan['monthly_price']}\n" + "\n".join(plan['features'])
-    
+
     try:
         await bot.send_invoice(
             chat_id=callback.message.chat.id,
@@ -647,7 +740,7 @@ async def process_payment(callback: CallbackQuery, state: FSMContext):
             currency="XTR",
             prices=prices
         )
-        await callback.answer("✨ Создан счёт")
+        await callback.answer("✨ Счёт создан!")
     except Exception as e:
         logger.error(f"Invoice error: {e}")
         await callback.answer("❌ Ошибка. Попробуйте позже.", show_alert=True)
@@ -662,30 +755,52 @@ async def process_pre_checkout(pre_checkout_query: PreCheckoutQuery):
 async def process_successful_payment(message: Message, state: FSMContext):
     payment = message.successful_payment
     payload = payment.invoice_payload
-    
+    stars_amount = payment.total_amount  # actual Stars paid
+
     # Determine plan
     if payload.startswith("url_plan_"):
         plan_id = payload.replace("url_plan_", "")
     else:
         plan_id = payload.replace("plan_", "")
-    
+
     plan = PLANS.get(plan_id, PLANS["starter"])
     data = await state.get_data()
-    
+
+    # ── Save to SQLite ──
+    save_payment(
+        user_id=message.from_user.id,
+        username=message.from_user.username,
+        full_name=message.from_user.full_name,
+        plan=plan_id,
+        amount=stars_amount,
+        payload=payload
+    )
+
     # Track partner referral if exists
     ref_code = data.get("ref_code")
     if ref_code:
-        await track_partner_referral(ref_code, message.from_user, plan_id, plan['stars_creation'])
-    
-    # Admin notification
+        await track_partner_referral(ref_code, message.from_user, plan_id, stars_amount)
+
+    # ── Notify Тимур (644024059) ──
     ref_info = f"\n🤝 Реферал: {ref_code}" if ref_code else ""
-    admin_msg = (f"💰 <b>Оплата!</b>\n\n"
-                 f"📦 {plan['name']} ({plan['stars_creation']} Stars)\n"
-                 f"👤 {message.from_user.full_name}\n"
-                 f"🆔 {message.from_user.id} @{message.from_user.username or ''}{ref_info}")
+    timur_msg = (
+        f"💰 <b>Новая оплата Stars!</b>\n\n"
+        f"📦 {plan['name']} — {stars_amount} ⭐\n"
+        f"👤 {message.from_user.full_name}\n"
+        f"🆔 {message.from_user.id}"
+        f" @{message.from_user.username or '—'}{ref_info}\n"
+        f"📅 {datetime.now().strftime('%d.%m.%Y %H:%M')} UTC"
+    )
     try:
-        await bot.send_message(ADMIN_CHAT_ID, admin_msg)
-    except: pass
+        await bot.send_message(TIMUR_CHAT_ID, timur_msg)
+    except Exception as e:
+        logger.error(f"Failed to notify Timur: {e}")
+
+    # Also notify main admin if different
+    if ADMIN_CHAT_ID != TIMUR_CHAT_ID:
+        try:
+            await bot.send_message(ADMIN_CHAT_ID, timur_msg)
+        except: pass
     
     # URL-based setup — skip onboarding, go straight to bot token
     if payload.startswith("url_plan_") and data.get("url"):
@@ -1190,6 +1305,7 @@ dp.include_router(router)
 
 async def main():
     logger.info("Starting AI Centers Sales Bot v2.0...")
+    init_payments_db()
     if not GEMINI_API_KEY:
         logger.error("GEMINI_API_KEY not set!")
         return
