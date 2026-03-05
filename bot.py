@@ -48,7 +48,7 @@ gemini_model = genai.GenerativeModel('gemini-2.5-flash')
 SALES_PROMPT = """Ты — консультант AI Centers. Помогаешь бизнесу получить AI-ассистента.
 
 КЛЮЧЕВОЕ ПРЕДЛОЖЕНИЕ:
-- Создание AI-бота: от $99 (разово) + от $15/мес (абонплата)
+- Создание AI-бота: от $149 (разово) + от $19/мес (абонплата)
 - Работает 24/7, отвечает клиентам, записывает на услуги
 - Настройка за 5 минут если есть сайт, или за 24 часа по описанию
 - Дешевле сотрудника в 50 раз
@@ -83,9 +83,9 @@ class URLSetup(StatesGroup):
 PLANS = {
     "starter": {
         "name": "Starter",
-        "creation_price": "$99",
-        "monthly_price": "$15/мес",
-        "stars_creation": 149,
+        "creation_price": "$149",
+        "monthly_price": "$19/мес",
+        "stars_creation": 249,
         "stars_monthly": 15,
         "features": [
             "✓ 1 AI-агент",
@@ -96,9 +96,9 @@ PLANS = {
     },
     "pro": {
         "name": "Pro",
-        "creation_price": "$199",
-        "monthly_price": "$29/мес",
-        "stars_creation": 299,
+        "creation_price": "$299",
+        "monthly_price": "$49/мес",
+        "stars_creation": 799,
         "stars_monthly": 29,
         "badge": "⭐ Популярный",
         "features": [
@@ -111,9 +111,9 @@ PLANS = {
     },
     "business": {
         "name": "Business",
-        "creation_price": "$399",
-        "monthly_price": "$59/мес",
-        "stars_creation": 499,
+        "creation_price": "$499",
+        "monthly_price": "$79/мес",
+        "stars_creation": 999,
         "stars_monthly": 59,
         "features": [
             "✓ 10 AI-агентов",
@@ -125,9 +125,9 @@ PLANS = {
     },
     "enterprise": {
         "name": "Enterprise",
-        "creation_price": "от $999",
-        "monthly_price": "$149/мес",
-        "stars_creation": 1499,
+        "creation_price": "$1,499",
+        "monthly_price": "$199/мес",
+        "stars_creation": 2499,
         "stars_monthly": 149,
         "features": [
             "✓ Безлимит агентов",
@@ -170,16 +170,16 @@ FAQ_ANSWERS = {
     
     "pricing": """💰 <b>Тарифы (создание + абонплата):</b>
 
-📦 <b>Starter</b> — $99 + $15/мес
+📦 <b>Starter</b> — $149 + $19/мес
 1 бот, Telegram, безлимит сообщений
 
-📦 <b>Pro</b> — $199 + $29/мес ⭐
+📦 <b>Pro</b> — $299 + $49/мес ⭐
 3 бота, мультиканал, CRM, аналитика
 
-📦 <b>Business</b> — $399 + $59/мес
+📦 <b>Business</b> — $499 + $79/мес
 10 ботов, голосовой AI, белый лейбл
 
-📦 <b>Enterprise</b> — от $999 + $149/мес
+📦 <b>Enterprise</b> — $1,499 + $199/мес
 Безлимит, API, любые интеграции
 
 Без скрытых платежей. Гарантия 50% автоматизации или возврат.""",
@@ -342,10 +342,10 @@ def get_main_menu():
 
 def get_pricing_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=f"Starter — $99 + $15/мес", callback_data="buy_starter")],
-        [InlineKeyboardButton(text=f"Pro — $199 + $29/мес ⭐", callback_data="buy_pro")],
-        [InlineKeyboardButton(text=f"Business — $399 + $59/мес", callback_data="buy_business")],
-        [InlineKeyboardButton(text=f"Enterprise — от $999", callback_data="buy_enterprise")],
+        [InlineKeyboardButton(text=f"Starter — $149 + $19/мес", callback_data="buy_starter")],
+        [InlineKeyboardButton(text=f"Pro — $299 + $49/мес ⭐", callback_data="buy_pro")],
+        [InlineKeyboardButton(text=f"Business — $499 + $79/мес", callback_data="buy_business")],
+        [InlineKeyboardButton(text=f"Enterprise — $1,499", callback_data="buy_enterprise")],
         [InlineKeyboardButton(text="◀️ Назад", callback_data="back_to_menu")]
     ])
 
@@ -353,10 +353,10 @@ def get_pricing_keyboard():
 def get_plan_select_keyboard():
     """Keyboard for URL setup plan selection."""
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Starter — $99 + $15/мес", callback_data="urlplan_starter")],
-        [InlineKeyboardButton(text="Pro — $199 + $29/мес ⭐", callback_data="urlplan_pro")],
-        [InlineKeyboardButton(text="Business — $399 + $59/мес", callback_data="urlplan_business")],
-        [InlineKeyboardButton(text="Enterprise — от $999", callback_data="urlplan_enterprise")],
+        [InlineKeyboardButton(text="Starter — $149 + $19/мес", callback_data="urlplan_starter")],
+        [InlineKeyboardButton(text="Pro — $299 + $49/мес ⭐", callback_data="urlplan_pro")],
+        [InlineKeyboardButton(text="Business — $499 + $79/мес", callback_data="urlplan_business")],
+        [InlineKeyboardButton(text="Enterprise — $1,499", callback_data="urlplan_enterprise")],
         [InlineKeyboardButton(text="◀️ Назад", callback_data="back_to_menu")]
     ])
 
