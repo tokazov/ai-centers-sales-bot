@@ -647,15 +647,91 @@ async def on_cu_funnel_pilot(callback: types.CallbackQuery):
     uid = callback.from_user.id
     session = get_session(uid)
     lang = session.get("lang", "ru")
+    session["funnel_shown"] = True
+
+    # Show explanation first
+    explain = {
+        "ru": (
+            "🖥 <b>Как работает AI Computer Use?</b>\n\n"
+            "AI-сотрудник работает прямо в вашем компьютере — как живой человек:\n"
+            "• Открывает программы (AmoCRM, 1С, Bitrix24)\n"
+            "• Заполняет формы, переносит данные\n"
+            "• Отправляет письма и сообщения\n"
+            "• Работает 24/7 без перерывов\n\n"
+            "<b>Что нужно с вашей стороны:</b>\n"
+            "💻 Компьютер включён и подключён к интернету\n"
+            "🌐 Доступ к вашей системе (логин + пароль)\n"
+            "📋 Список задач которые нужно автоматизировать\n\n"
+            "Больше ничего — мы всё настроим сами.\n\n"
+            "<b>Готовы запустить?</b>"
+        ),
+        "en": (
+            "🖥 <b>How does AI Computer Use work?</b>\n\n"
+            "An AI employee works directly on your computer — like a real person:\n"
+            "• Opens programs (AmoCRM, 1C, Bitrix24)\n"
+            "• Fills forms, transfers data\n"
+            "• Sends emails and messages\n"
+            "• Works 24/7 without breaks\n\n"
+            "<b>What you need:</b>\n"
+            "💻 Computer turned on and connected to internet\n"
+            "🌐 Access to your system (login + password)\n"
+            "📋 List of tasks to automate\n\n"
+            "That's it — we'll set up everything.\n\n"
+            "<b>Ready to start?</b>"
+        ),
+        "ka": (
+            "🖥 <b>როგორ მუშაობს AI Computer Use?</b>\n\n"
+            "AI-თანამშრომელი მუშაობს პირდაპირ თქვენს კომპიუტერში:\n"
+            "• ხსნის პროგრამებს (AmoCRM, 1C, Bitrix24)\n"
+            "• ავსებს ფორმებს, გადააქვს მონაცემები\n"
+            "• აგზავნის წერილებს და შეტყობინებებს\n"
+            "• მუშაობს 24/7\n\n"
+            "<b>რა გჭირდებათ:</b>\n"
+            "💻 ჩართული კომპიუტერი ინტერნეტით\n"
+            "🌐 სისტემაში წვდომა\n"
+            "📋 ავტომატიზაციის ამოცანების სია\n\n"
+            "<b>მზად ხართ?</b>"
+        ),
+        "tr": (
+            "🖥 <b>AI Computer Use nasıl çalışır?</b>\n\n"
+            "AI çalışan doğrudan bilgisayarınızda çalışır — gerçek bir kişi gibi:\n"
+            "• Programları açar (AmoCRM, 1C, Bitrix24)\n"
+            "• Formları doldurur, verileri aktarır\n"
+            "• E-posta ve mesaj gönderir\n"
+            "• 7/24 mola vermeden çalışır\n\n"
+            "<b>Sizden ne gerekiyor:</b>\n"
+            "💻 Açık ve internete bağlı bilgisayar\n"
+            "🌐 Sisteminize erişim (kullanıcı adı + şifre)\n"
+            "📋 Otomatikleştirilecek görev listesi\n\n"
+            "<b>Başlamaya hazır mısınız?</b>"
+        ),
+    }
+
+    yes_btn = {"ru": "✅ Да, запустить", "en": "✅ Yes, start", "ka": "✅ დიახ, გაშვება", "tr": "✅ Evet, başlat"}
+    q_btn = {"ru": "❓ Ещё вопросы", "en": "❓ More questions", "ka": "❓ კითხვები", "tr": "❓ Daha fazla soru"}
+
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=yes_btn.get(lang, yes_btn["en"]), callback_data="cu_start_questionnaire")],
+        [InlineKeyboardButton(text=q_btn.get(lang, q_btn["en"]), callback_data="cu_funnel_question")],
+    ])
+    await callback.message.answer(explain.get(lang, explain["en"]), reply_markup=kb)
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "cu_start_questionnaire")
+async def on_cu_start_questionnaire(callback: types.CallbackQuery):
+    uid = callback.from_user.id
+    session = get_session(uid)
+    lang = session.get("lang", "ru")
     session["mode"] = "cu_pilot"
     session["cu_pilot_step"] = 1
     session["cu_pilot_data"] = {}
 
     q1 = {
-        "ru": "🚀 <b>Запустить пилот!</b>\n\n<b>Какую систему используете?</b>",
-        "en": "🚀 <b>Start pilot!</b>\n\n<b>What system do you use?</b>",
-        "ka": "🚀 <b>პილოტის გაშვება!</b>\n\n<b>რომელ სისტემას იყენებთ?</b>",
-        "tr": "🚀 <b>Pilotu başlat!</b>\n\n<b>Hangi sistemi kullanıyorsunuz?</b>",
+        "ru": "🚀 <b>Отлично! Запускаем.</b>\n\n<b>1/3. Какую систему используете?</b>",
+        "en": "🚀 <b>Great! Let's go.</b>\n\n<b>1/3. What system do you use?</b>",
+        "ka": "🚀 <b>შესანიშნავი! დავიწყოთ.</b>\n\n<b>1/3. რომელ სისტემას იყენებთ?</b>",
+        "tr": "🚀 <b>Harika! Başlıyoruz.</b>\n\n<b>1/3. Hangi sistemi kullanıyorsunuz?</b>",
     }
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="AmoCRM", callback_data="cu_sys_amocrm"),
