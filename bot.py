@@ -401,6 +401,7 @@ async def show_funnel_step1(message: types.Message):
          InlineKeyboardButton(text=t(lang, "biz_shop"), callback_data="biz_shop")],
         [InlineKeyboardButton(text=t(lang, "biz_services"), callback_data="biz_services"),
          InlineKeyboardButton(text=t(lang, "biz_other"), callback_data="biz_other")],
+        [InlineKeyboardButton(text="🖥 AI Computer Use", callback_data="biz_computer")],
     ])
     await message.answer(t(lang, "welcome", name=name), reply_markup=kb)
     logger.info(f"Funnel step 1: {uid} lang={lang}")
@@ -538,6 +539,170 @@ async def cmd_start(message: types.Message):
 # ─── Sales Funnel Callbacks ───
 
 # Niche names and cases are now in i18n.py
+
+
+# Step 2a — Computer Use niche (separate flow)
+@dp.callback_query(F.data == "biz_computer")
+async def on_biz_computer(callback: types.CallbackQuery):
+    uid = callback.from_user.id
+    session = get_session(uid)
+    lang = session.get("lang", detect_lang(callback.from_user))
+    session["niche"] = "biz_computer"
+    session["funnel_shown"] = True
+
+    case_texts = {
+        "ru": (
+            "🖥 <b>AI Computer Use — работает в ваших программах</b>\n\n"
+            "📦 <b>Кейс: логистическая компания</b>\n"
+            "• AI сам вносит данные в 1С — 0 ошибок\n"
+            "• Обрабатывает 500 накладных/день вместо 3 менеджеров\n"
+            "• Экономия: <b>$2,400/мес</b> на зарплатах\n\n"
+            "💰 Аддон от <b>$39/мес</b>. Настройка $299 (разово).\n"
+            "Первые 3 дня — <b>бесплатный пилот</b> в вашей системе."
+        ),
+        "en": (
+            "🖥 <b>AI Computer Use — works in your software</b>\n\n"
+            "📦 <b>Case: logistics company</b>\n"
+            "• AI enters data into 1C — 0 errors\n"
+            "• Processes 500 invoices/day instead of 3 managers\n"
+            "• Savings: <b>$2,400/mo</b> on salaries\n\n"
+            "💰 Add-on from <b>$39/mo</b>. Setup $299 (one-time).\n"
+            "First 3 days — <b>free pilot</b> in your system."
+        ),
+        "ka": (
+            "🖥 <b>AI Computer Use — მუშაობს თქვენს პროგრამებში</b>\n\n"
+            "📦 <b>ქეისი: ლოჯისტიკური კომპანია</b>\n"
+            "• AI თავად შეაქვს მონაცემებს 1C-ში — 0 შეცდომა\n"
+            "• ამუშავებს 500 ზედნადებს/დღეში 3 მენეჯერის ნაცვლად\n"
+            "• დაზოგვა: <b>$2,400/თვე</b>\n\n"
+            "💰 დანამატი <b>$39/თვე</b>-დან. დაყენება $299 (ერთჯერადი).\n"
+            "პირველი 3 დღე — <b>უფასო პილოტი</b> თქვენს სისტემაში."
+        ),
+        "tr": (
+            "🖥 <b>AI Computer Use — programlarınızda çalışır</b>\n\n"
+            "📦 <b>Vaka: lojistik şirketi</b>\n"
+            "• AI verileri 1C'ye girer — 0 hata\n"
+            "• 3 yönetici yerine günde 500 irsaliye işler\n"
+            "• Tasarruf: <b>$2,400/ay</b> maaşlardan\n\n"
+            "💰 Eklenti <b>$39/ay</b>'dan. Kurulum $299 (tek seferlik).\n"
+            "İlk 3 gün — sisteminizde <b>ücretsiz pilot</b>."
+        ),
+    }
+
+    cu_pilot_btn = {"ru": "🚀 Получить бесплатный пилот", "en": "🚀 Get Free Pilot", "ka": "🚀 უფასო პილოტი", "tr": "🚀 Ücretsiz Pilot"}
+    cu_pricing_btn = {"ru": "💰 Тарифы", "en": "💰 Pricing", "ka": "💰 ტარიფები", "tr": "💰 Tarifeler"}
+    cu_question_btn = {"ru": "❓ Задать вопрос", "en": "❓ Ask a Question", "ka": "❓ კითხვა", "tr": "❓ Soru Sorun"}
+
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=cu_pilot_btn.get(lang, cu_pilot_btn["en"]), callback_data="cu_funnel_pilot")],
+        [InlineKeyboardButton(text=cu_pricing_btn.get(lang, cu_pricing_btn["en"]), callback_data="cu_funnel_pricing")],
+        [InlineKeyboardButton(text=cu_question_btn.get(lang, cu_question_btn["en"]), callback_data="cu_funnel_question")],
+    ])
+
+    await callback.message.edit_text(case_texts.get(lang, case_texts["en"]), reply_markup=kb)
+    await callback.answer()
+    logger.info(f"CU funnel case shown: {uid} lang={lang}")
+
+
+@dp.callback_query(F.data == "cu_funnel_pilot")
+async def on_cu_funnel_pilot(callback: types.CallbackQuery):
+    uid = callback.from_user.id
+    session = get_session(uid)
+    lang = session.get("lang", "ru")
+    session["mode"] = "cu_pilot"
+    session["cu_pilot_step"] = 1
+    session["cu_pilot_data"] = {}
+
+    q1 = {
+        "ru": "🚀 <b>Бесплатный пилот!</b>\n\n<b>Какую систему используете?</b>",
+        "en": "🚀 <b>Free pilot!</b>\n\n<b>What system do you use?</b>",
+        "ka": "🚀 <b>უფასო პილოტი!</b>\n\n<b>რომელ სისტემას იყენებთ?</b>",
+        "tr": "🚀 <b>Ücretsiz pilot!</b>\n\n<b>Hangi sistemi kullanıyorsunuz?</b>",
+    }
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="AmoCRM", callback_data="cu_sys_amocrm"),
+         InlineKeyboardButton(text="Bitrix24", callback_data="cu_sys_bitrix")],
+        [InlineKeyboardButton(text="1C", callback_data="cu_sys_1c"),
+         InlineKeyboardButton(text="Google Sheets", callback_data="cu_sys_gsheets")],
+        [InlineKeyboardButton(text="Другое / Other", callback_data="cu_sys_other")],
+    ])
+    await callback.message.answer(q1.get(lang, q1["en"]), reply_markup=kb)
+    await callback.answer()
+    # Notify admin
+    try:
+        await bot.send_message(ADMIN_ID,
+            f"🚀 <b>Пилот CU (из воронки)!</b>\n"
+            f"👤 {callback.from_user.full_name} (@{callback.from_user.username or '?'})")
+    except Exception:
+        pass
+
+
+@dp.callback_query(F.data == "cu_funnel_pricing")
+async def on_cu_funnel_pricing(callback: types.CallbackQuery):
+    uid = callback.from_user.id
+    session = get_session(uid)
+    lang = session.get("lang", "ru")
+
+    pricing_texts = {
+        "ru": (
+            "💰 <b>Тарифы AI Computer Use</b>\n\n"
+            "🟢 <b>Start — $39/мес</b>\n500 операций · 1 процесс\n\n"
+            "🔵 <b>Growth — $99/мес</b> 🔥\n2,000 операций · 3 процесса\n\n"
+            "🟣 <b>Scale — $299/мес</b>\n10,000 операций · 10 процессов\n\n"
+            "⚡ <b>Unlimited — $599/мес</b>\n∞ операций · ∞ процессов\n\n"
+            "➕ Настройка процесса: от $299 (разово)"
+        ),
+        "en": (
+            "💰 <b>AI Computer Use Pricing</b>\n\n"
+            "🟢 <b>Start — $39/mo</b>\n500 ops · 1 process\n\n"
+            "🔵 <b>Growth — $99/mo</b> 🔥\n2,000 ops · 3 processes\n\n"
+            "🟣 <b>Scale — $299/mo</b>\n10,000 ops · 10 processes\n\n"
+            "⚡ <b>Unlimited — $599/mo</b>\n∞ ops · ∞ processes\n\n"
+            "➕ Process setup: from $299 (one-time)"
+        ),
+        "ka": (
+            "💰 <b>AI Computer Use ტარიფები</b>\n\n"
+            "🟢 <b>Start — $39/თვე</b>\n500 ოპერაცია · 1 პროცესი\n\n"
+            "🔵 <b>Growth — $99/თვე</b> 🔥\n2,000 ოპერაცია · 3 პროცესი\n\n"
+            "🟣 <b>Scale — $299/თვე</b>\n10,000 ოპერაცია · 10 პროცესი\n\n"
+            "⚡ <b>Unlimited — $599/თვე</b>\n∞ ოპერაცია · ∞ პროცესი"
+        ),
+        "tr": (
+            "💰 <b>AI Computer Use Tarifeler</b>\n\n"
+            "🟢 <b>Start — $39/ay</b>\n500 işlem · 1 süreç\n\n"
+            "🔵 <b>Growth — $99/ay</b> 🔥\n2,000 işlem · 3 süreç\n\n"
+            "🟣 <b>Scale — $299/ay</b>\n10,000 işlem · 10 süreç\n\n"
+            "⚡ <b>Unlimited — $599/ay</b>\n∞ işlem · ∞ süreç"
+        ),
+    }
+
+    start_btn = {"ru": "🚀 Получить бесплатный пилот", "en": "🚀 Get Free Pilot", "ka": "🚀 უფასო პილოტი", "tr": "🚀 Ücretsiz Pilot"}
+    back_btn = {"ru": "← Назад", "en": "← Back", "ka": "← უკან", "tr": "← Geri"}
+
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=start_btn.get(lang, start_btn["en"]), callback_data="cu_funnel_pilot")],
+        [InlineKeyboardButton(text=back_btn.get(lang, back_btn["en"]), callback_data="back_menu")],
+    ])
+    await callback.message.answer(pricing_texts.get(lang, pricing_texts["en"]), reply_markup=kb)
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "cu_funnel_question")
+async def on_cu_funnel_question(callback: types.CallbackQuery):
+    uid = callback.from_user.id
+    session = get_session(uid)
+    lang = session.get("lang", "ru")
+    session["mode"] = "receptionist"
+    session["funnel_shown"] = True
+
+    q_texts = {
+        "ru": "❓ Задайте вопрос про AI Computer Use — отвечу!",
+        "en": "❓ Ask any question about AI Computer Use — I'll answer!",
+        "ka": "❓ დასვით კითხვა AI Computer Use-ის შესახებ!",
+        "tr": "❓ AI Computer Use hakkında sorunuzu sorun!",
+    }
+    await callback.message.answer(q_texts.get(lang, q_texts["en"]))
+    await callback.answer()
 
 
 # Step 2 — Pain point
