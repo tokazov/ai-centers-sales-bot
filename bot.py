@@ -1199,7 +1199,7 @@ async def handle_cu_text(message: types.Message, session: dict) -> bool:
         }
         checkout_url = f"https://aicenters.co/checkout?plan=computer-use-activation&lang={lang}"
         kb = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="⭐ Telegram Stars — 249 ★", callback_data="pay_cu_activation_stars")],
+            [InlineKeyboardButton(text="⭐ Telegram Stars — 19,154 ★", callback_data="pay_cu_activation_stars")],
             [InlineKeyboardButton(text="💎 Крипто (USDT/BTC)" if lang == "ru" else "💎 Crypto (USDT/BTC)", url=checkout_url)],
         ])
         await message.answer(offer.get(lang, offer["en"]), reply_markup=kb)
