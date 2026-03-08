@@ -55,7 +55,7 @@ STARS_WEEK = 150      # ~$2.5/week
 STARS_MONTH = 500     # ~$8/month (discount vs weekly)
 STARS_PREMIUM = 1500  # ~$25/month — all agents + priority
 STARS_CUSTOM = 3000   # ~$50 — custom bot consultation fee
-STARS_CU_PILOT = 249  # ~$4 — computer use pilot (3 days)
+STARS_CU_ACTIVATION = 249  # $249 equivalent — computer use activation + 1 month free
 PLATFORM_API_URL = os.getenv("PLATFORM_API_URL", "https://platform-api-production-f313.up.railway.app")
 PLATFORM_API_KEY = os.getenv("PLATFORM_API_KEY", "")  # internal auth key
 COMPUTER_USE_BOT = os.getenv("COMPUTER_USE_BOT", "aicenters_computer_bot")
@@ -252,7 +252,7 @@ STAR_PLANS = {
     "month": {"title": "AI Centers — Месяц ⭐", "description": "30 дней безлимитного общения + все агенты", "stars": STARS_MONTH, "days": 30},
     "premium": {"title": "AI Centers Premium ⭐", "description": "30 дней — все агенты, приоритет, голосовые ответы", "stars": STARS_PREMIUM, "days": 30},
     "custom": {"title": "AI-бот под ключ ⭐", "description": "Консультация + создание персонального AI-бота", "stars": STARS_CUSTOM, "days": 0},
-    "cu_pilot": {"title": "AI Computer Use — Пилот ⭐", "description": "3 дня бесплатный пилот в вашей системе", "stars": STARS_CU_PILOT, "days": 3},
+    "cu_activation": {"title": "AI Computer Use — Активация ⭐", "description": "Подключение AI + первый месяц бесплатно", "stars": STARS_CU_ACTIVATION, "days": 30},
 }
 
 # user_id -> {"paid_until": timestamp, "plan": str}
@@ -330,9 +330,9 @@ async def on_payment(message: types.Message):
         logger.error(f"Failed to sync Stars payment to platform-api: {e}")
         # Payment still works locally even if platform-api is down
 
-    # ── Computer Use pilot activation ──
-    if plan_key == "cu_pilot":
-        await activate_cu_pilot(message, uid, user, stars, "telegram_stars")
+    # ── Computer Use activation ──
+    if plan_key == "cu_activation":
+        await activate_cu(message, uid, user, stars)
         return
 
     await message.answer(f"🎉 Оплата прошла! {stars} ⭐ — спасибо!\n\nТеперь у тебя безлимит {'на ' + str(days) + ' дней' if days > 0 else ''}. Пиши что угодно! 🚀")
@@ -738,15 +738,15 @@ async def on_cu_funnel_question(callback: types.CallbackQuery):
 
 
 # ── CU Pilot Stars payment button ──
-@dp.callback_query(F.data == "pay_cu_pilot_stars")
-async def on_pay_cu_pilot_stars(callback: types.CallbackQuery):
-    await send_stars_invoice(callback.message, "cu_pilot")
+@dp.callback_query(F.data == "pay_cu_activation_stars")
+async def on_pay_cu_activation_stars(callback: types.CallbackQuery):
+    await send_stars_invoice(callback.message, "cu_activation")
     await callback.answer()
 
 
-# ── CU Pilot activation (called after any payment) ──
-async def activate_cu_pilot(message: types.Message, uid: int, user, stars: int, method: str):
-    """Activate Computer Use pilot: allow user + notify + onboard."""
+# ── CU Activation (called after Stars payment) ──
+async def activate_cu(message: types.Message, uid: int, user, stars: int):
+    """Activate Computer Use: allow user + notify + onboard."""
     session = get_session(uid)
     lang = session.get("lang", "ru")
     data = session.get("cu_pilot_data", {})
@@ -763,33 +763,35 @@ async def activate_cu_pilot(message: types.Message, uid: int, user, stars: int, 
                     headers={"X-Internal-Key": PLATFORM_API_KEY},
                     timeout=aiohttp.ClientTimeout(total=10),
                 )
-            logger.info(f"CU Pilot: user {uid} allowed on computer-use-agent")
+            logger.info(f"CU Activation: user {uid} allowed on computer-use-agent")
         except Exception as e:
-            logger.error(f"CU Pilot: failed to allow user {uid}: {e}")
+            logger.error(f"CU Activation: failed to allow user {uid}: {e}")
 
     # 2. Send activation message to client
     done = {
         "ru": (
-            "🚀 <b>Пилот активирован!</b>\n\n"
-            "Напишите боту — он уже готов работать в вашей системе:\n"
+            "🚀 <b>Система активирована!</b>\n\n"
+            "Первый месяц — наш подарок 🎁\n\n"
+            "Напишите боту — он уже готов работать:\n"
             "👉 @aicenters_computer_bot\n\n"
             "Опишите задачу (например: «Перенеси данные из Excel в 1С»), и AI выполнит!"
         ),
         "en": (
-            "🚀 <b>Pilot activated!</b>\n\n"
-            "Write to the bot — it's ready to work in your system:\n"
+            "🚀 <b>System activated!</b>\n\n"
+            "First month is our gift 🎁\n\n"
+            "Write to the bot — it's ready to work:\n"
             "👉 @aicenters_computer_bot\n\n"
             "Describe a task (e.g.: 'Transfer data from Excel to 1C') and AI will do it!"
         ),
         "ka": (
-            "🚀 <b>პილოტი გააქტიურებულია!</b>\n\n"
-            "მიწერეთ ბოტს — ის მზად არის:\n"
-            "👉 @aicenters_computer_bot"
+            "🚀 <b>სისტემა გააქტიურებულია!</b>\n\n"
+            "პირველი თვე — ჩვენი საჩუქარი 🎁\n\n"
+            "მიწერეთ ბოტს:\n👉 @aicenters_computer_bot"
         ),
         "tr": (
-            "🚀 <b>Pilot aktif!</b>\n\n"
-            "Bota yazın — sisteminizde çalışmaya hazır:\n"
-            "👉 @aicenters_computer_bot"
+            "🚀 <b>Sistem aktif!</b>\n\n"
+            "İlk ay — bizden hediye 🎁\n\n"
+            "Bota yazın:\n👉 @aicenters_computer_bot"
         ),
     }
     kb = InlineKeyboardMarkup(inline_keyboard=[
@@ -801,10 +803,10 @@ async def activate_cu_pilot(message: types.Message, uid: int, user, stars: int, 
     # 3. Notify admin
     try:
         await bot.send_message(ADMIN_ID,
-            f"💰🖥 <b>CU Pilot ОПЛАЧЕН!</b>\n\n"
+            f"💰🖥 <b>ОПЛАТА Computer Use — Активация!</b>\n\n"
             f"👤 {user.full_name} (@{getattr(user, 'username', '?') or '?'})\n"
             f"🆔 {uid}\n"
-            f"⭐ {stars} stars ({method})\n"
+            f"⭐ {stars} Stars\n"
             f"🖥 Система: {data.get('system', '?')}\n"
             f"⚙️ Процесс: {data.get('process', '?')}\n"
             f"📞 Контакт: {data.get('contact', '?')}")
@@ -813,7 +815,7 @@ async def activate_cu_pilot(message: types.Message, uid: int, user, stars: int, 
 
     session["mode"] = "receptionist"
     session["cu_pilot_step"] = None
-    logger.info(f"CU Pilot activated: {uid} method={method} stars={stars}")
+    logger.info(f"CU Activated: {uid} stars={stars}")
 
 
 # Step 2 — Pain point
@@ -1138,10 +1140,11 @@ async def handle_cu_text(message: types.Message, session: dict) -> bool:
     if mode == "cu_pilot" and session.get("cu_pilot_step") == 3:
         session.setdefault("cu_pilot_data", {})["contact"] = text
         data = session["cu_pilot_data"]
+        system = data.get("system", "CRM")
         # Notify admin about lead
         try:
             await bot.send_message(ADMIN_ID,
-                f"🚀 <b>Новый пилот Computer Use!</b>\n\n"
+                f"🚀 <b>Лид Computer Use!</b>\n\n"
                 f"👤 {message.from_user.full_name} (@{message.from_user.username or '?'})\n"
                 f"🖥 Система: {data.get('system', '?')}\n"
                 f"⚙️ Процесс: {data.get('process', '?')}\n"
@@ -1149,23 +1152,54 @@ async def handle_cu_text(message: types.Message, session: dict) -> bool:
         except Exception:
             pass
 
-        # Show payment options
-        done = {
-            "ru": "✅ <b>Заявка принята!</b>\n\nДля запуска пилота выберите способ оплаты:",
-            "en": "✅ <b>Application received!</b>\n\nTo start the pilot, choose a payment method:",
-            "ka": "✅ <b>მოთხოვნა მიღებულია!</b>\n\nპილოტის დასაწყებად აირჩიეთ გადახდის მეთოდი:",
-            "tr": "✅ <b>Talep alındı!</b>\n\nPilotu başlatmak için ödeme yöntemini seçin:",
+        # Show activation offer with payment
+        offer = {
+            "ru": (
+                "🎁 <b>Специальное предложение!</b>\n\n"
+                f"Активация системы — <b>$249</b> (разово)\n"
+                "✅ Первый месяц ($39) — <b>в подарок!</b>\n\n"
+                "Что входит:\n"
+                f"• Подключение AI к вашей системе ({system})\n"
+                "• Настройка под ваш процесс\n"
+                "• Первый месяц работы бесплатно\n\n"
+                "Выберите способ оплаты:"
+            ),
+            "en": (
+                "🎁 <b>Special offer!</b>\n\n"
+                f"System activation — <b>$249</b> (one-time)\n"
+                "✅ First month ($39) — <b>free!</b>\n\n"
+                "Includes:\n"
+                f"• AI connection to your system ({system})\n"
+                "• Custom process setup\n"
+                "• First month free\n\n"
+                "Choose payment method:"
+            ),
+            "ka": (
+                "🎁 <b>სპეციალური შეთავაზება!</b>\n\n"
+                f"სისტემის აქტივაცია — <b>$249</b> (ერთჯერადი)\n"
+                "✅ პირველი თვე ($39) — <b>საჩუქრად!</b>\n\n"
+                f"• AI-ის დაკავშირება ({system})\n"
+                "• პროცესის მორგება\n"
+                "• პირველი თვე უფასო"
+            ),
+            "tr": (
+                "🎁 <b>Özel teklif!</b>\n\n"
+                f"Sistem aktivasyonu — <b>$249</b> (tek seferlik)\n"
+                "✅ İlk ay ($39) — <b>hediye!</b>\n\n"
+                f"• AI bağlantısı ({system})\n"
+                "• Süreç kurulumu\n"
+                "• İlk ay ücretsiz"
+            ),
         }
-        crypto_url = f"https://aicenters.co/checkout?plan=computer-use-pilot&lang={lang}"
-        stars_btn = {"ru": "⭐️ Telegram Stars — 249 ★", "en": "⭐️ Telegram Stars — 249 ★", "ka": "⭐️ Telegram Stars — 249 ★", "tr": "⭐️ Telegram Stars — 249 ★"}
-        crypto_btn = {"ru": "💎 Криптовалюта (USDT/BTC)", "en": "💎 Crypto (USDT/BTC)", "ka": "💎 კრიპტოვალუტა (USDT/BTC)", "tr": "💎 Kripto (USDT/BTC)"}
+        checkout_url = f"https://aicenters.co/checkout?plan=computer-use-activation&lang={lang}"
         kb = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text=stars_btn.get(lang, stars_btn["en"]), callback_data="pay_cu_pilot_stars")],
-            [InlineKeyboardButton(text=crypto_btn.get(lang, crypto_btn["en"]), url=crypto_url)],
+            [InlineKeyboardButton(text="⭐ Telegram Stars — 249 ★", callback_data="pay_cu_activation_stars")],
+            [InlineKeyboardButton(text="💎 Крипто (USDT/BTC)" if lang == "ru" else "💎 Crypto (USDT/BTC)", url=checkout_url)],
         ])
-        await message.answer(done.get(lang, done["en"]), reply_markup=kb)
-        session["cu_pilot_step"] = "payment"
-        logger.info(f"CU Pilot payment options: {uid} system={data.get('system')}")
+        await message.answer(offer.get(lang, offer["en"]), reply_markup=kb)
+        session["cu_pilot_step"] = None
+        session["mode"] = "receptionist"
+        logger.info(f"CU activation offer: {uid} system={system}")
         return True
 
     if mode == "cu_demo":
