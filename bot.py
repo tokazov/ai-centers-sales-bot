@@ -509,6 +509,28 @@ async def cmd_start(message: types.Message):
         logger.info(f"CU Demo start: {uid}")
         return
 
+    if args == "computer_use_start":
+        session = get_session(uid)
+        session["funnel_shown"] = True
+        start_texts = {
+            "ru": ("🖥 <b>AI Computer Use</b>\n\n"
+                   "Отлично! Менеджер свяжется с вами и настроит AI-сотрудника под ваши задачи.\n\n"
+                   "📞 Напишите ваш контакт (телефон или Telegram) 👇"),
+            "en": ("🖥 <b>AI Computer Use</b>\n\n"
+                   "Great! Our manager will contact you to set up the AI worker for your tasks.\n\n"
+                   "📞 Write your contact (phone or Telegram) 👇"),
+            "ka": ("🖥 <b>AI Computer Use</b>\n\n"
+                   "შესანიშნავი! მენეჯერი დაგიკავშირდებათ და დააყენებს AI-თანამშრომელს.\n\n"
+                   "📞 დაწერეთ თქვენი საკონტაქტო 👇"),
+            "tr": ("🖥 <b>AI Computer Use</b>\n\n"
+                   "Harika! Yöneticimiz sizinle iletişime geçip AI çalışanını kuracak.\n\n"
+                   "📞 İletişim bilgilerinizi yazın 👇"),
+        }
+        session["mode"] = "cu_start_contact"
+        await message.answer(start_texts.get(lang, start_texts["en"]))
+        logger.info(f"CU Start: {uid}")
+        return
+
     # ── Sales funnel: Step 1 ──
     await show_funnel_step1(message)
 
@@ -883,6 +905,28 @@ async def handle_cu_text(message: types.Message, session: dict) -> bool:
         await message.answer(done.get(lang, done["en"]), reply_markup=kb)
         session["mode"] = "receptionist"
         logger.info(f"CU Demo scheduled: {uid} time={text}")
+        return True
+
+    if mode == "cu_start_contact":
+        try:
+            await bot.send_message(ADMIN_ID,
+                f"🖥 <b>Новый клиент Computer Use (с сайта)!</b>\n\n"
+                f"👤 {message.from_user.full_name} (@{message.from_user.username or '?'})\n"
+                f"📞 Контакт: {text}")
+        except Exception:
+            pass
+        done = {
+            "ru": "✅ <b>Заявка принята!</b>\n\nМенеджер свяжется с вами в течение 2 часов.",
+            "en": "✅ <b>Request received!</b>\n\nOur manager will contact you within 2 hours.",
+            "ka": "✅ <b>მოთხოვნა მიღებულია!</b>\n\nმენეჯერი დაგიკავშირდებათ 2 საათში.",
+            "tr": "✅ <b>Talep alındı!</b>\n\nYöneticimiz 2 saat içinde sizinle iletişime geçecek.",
+        }
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="← Меню", callback_data="back_menu")],
+        ])
+        await message.answer(done.get(lang, done["en"]), reply_markup=kb)
+        session["mode"] = "receptionist"
+        logger.info(f"CU Start contact: {uid} contact={text}")
         return True
 
     return False
