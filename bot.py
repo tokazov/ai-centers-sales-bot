@@ -429,7 +429,7 @@ async def show_funnel_step1(message: types.Message):
         "kk": "🖥 <b>AI Computer Use — бағдарламаларыңызда жұмыс істейді</b>",
         "uz": "🖥 <b>AI Computer Use — dasturlaringizda ishlaydi</b>",
     }
-    cu_pilot_btn = {"ru": "🚀 Получить бесплатный пилот", "en": "🚀 Get Free Pilot", "ka": "🚀 უფასო პილოტი", "tr": "🚀 Ücretsiz Pilot", "kk": "🚀 Тегін пилот", "uz": "🚀 Bepul pilot"}
+    cu_pilot_btn = {"ru": "🚀 Запустить пилот", "en": "🚀 Start Pilot", "ka": "🚀 პილოტის გაშვება", "tr": "🚀 Pilotu Başlat", "kk": "🚀 Пилотты іске қосу", "uz": "🚀 Pilotni ishga tushirish"}
     cu_pricing_btn = {"ru": "📋 Тарифы", "en": "📋 Pricing", "ka": "📋 ტარიფები", "tr": "📋 Tarifeler", "kk": "📋 Тарифтер", "uz": "📋 Tariflar"}
     cu_kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=cu_pilot_btn.get(lang, cu_pilot_btn["en"]), callback_data="cu_funnel_pilot"),
@@ -504,12 +504,12 @@ async def cmd_start(message: types.Message):
         session["cu_pilot_data"] = {}
         session["funnel_shown"] = True
         pilot_texts = {
-            "ru": ("🚀 <b>Бесплатный пилот AI Computer Use</b>\n\n"
-                   "Отлично! Запускаем бесплатный пилот.\n"
+            "ru": ("🚀 <b>Пилот AI Computer Use</b>\n\n"
+                   "Отлично! Запускаем пилот.\n"
                    "Ответьте на 3 вопроса:\n\n"
                    "<b>1/3. Какую систему используете?</b>"),
             "en": ("🚀 <b>Free AI Computer Use Pilot</b>\n\n"
-                   "Great! Let's start a free pilot.\n"
+                   "Great! Let's start the pilot.\n"
                    "Answer 3 questions:\n\n"
                    "<b>1/3. What system do you use?</b>"),
         }
@@ -590,7 +590,7 @@ async def on_biz_computer(callback: types.CallbackQuery):
             "• Обрабатывает 500 накладных/день вместо 3 менеджеров\n"
             "• Экономия: <b>$2,400/мес</b> на зарплатах\n\n"
             "💰 Аддон от <b>$39/мес</b>. Настройка $299 (разово).\n"
-            "Первые 3 дня — <b>бесплатный пилот</b> в вашей системе."
+            "Первые 3 дня — <b>пилот</b> в вашей системе."
         ),
         "en": (
             "🖥 <b>AI Computer Use — works in your software</b>\n\n"
@@ -599,7 +599,7 @@ async def on_biz_computer(callback: types.CallbackQuery):
             "• Processes 500 invoices/day instead of 3 managers\n"
             "• Savings: <b>$2,400/mo</b> on salaries\n\n"
             "💰 Add-on from <b>$39/mo</b>. Setup $299 (one-time).\n"
-            "First 3 days — <b>free pilot</b> in your system."
+            "First 3 days — <b>pilot</b> in your system."
         ),
         "ka": (
             "🖥 <b>AI Computer Use — მუშაობს თქვენს პროგრამებში</b>\n\n"
@@ -608,7 +608,7 @@ async def on_biz_computer(callback: types.CallbackQuery):
             "• ამუშავებს 500 ზედნადებს/დღეში 3 მენეჯერის ნაცვლად\n"
             "• დაზოგვა: <b>$2,400/თვე</b>\n\n"
             "💰 დანამატი <b>$39/თვე</b>-დან. დაყენება $299 (ერთჯერადი).\n"
-            "პირველი 3 დღე — <b>უფასო პილოტი</b> თქვენს სისტემაში."
+            "პირველი 3 დღე — <b>პილოტი</b> თქვენს სისტემაში."
         ),
         "tr": (
             "🖥 <b>AI Computer Use — programlarınızda çalışır</b>\n\n"
@@ -621,7 +621,7 @@ async def on_biz_computer(callback: types.CallbackQuery):
         ),
     }
 
-    cu_pilot_btn = {"ru": "🚀 Получить бесплатный пилот", "en": "🚀 Get Free Pilot", "ka": "🚀 უფასო პილოტი", "tr": "🚀 Ücretsiz Pilot"}
+    cu_pilot_btn = {"ru": "🚀 Запустить пилот", "en": "🚀 Start Pilot", "ka": "🚀 პილოტის გაშვება", "tr": "🚀 Pilotu Başlat"}
     cu_pricing_btn = {"ru": "💰 Тарифы", "en": "💰 Pricing", "ka": "💰 ტარიფები", "tr": "💰 Tarifeler"}
     cu_question_btn = {"ru": "❓ Задать вопрос", "en": "❓ Ask a Question", "ka": "❓ კითხვა", "tr": "❓ Soru Sorun"}
 
@@ -646,10 +646,10 @@ async def on_cu_funnel_pilot(callback: types.CallbackQuery):
     session["cu_pilot_data"] = {}
 
     q1 = {
-        "ru": "🚀 <b>Бесплатный пилот!</b>\n\n<b>Какую систему используете?</b>",
-        "en": "🚀 <b>Free pilot!</b>\n\n<b>What system do you use?</b>",
-        "ka": "🚀 <b>უფასო პილოტი!</b>\n\n<b>რომელ სისტემას იყენებთ?</b>",
-        "tr": "🚀 <b>Ücretsiz pilot!</b>\n\n<b>Hangi sistemi kullanıyorsunuz?</b>",
+        "ru": "🚀 <b>Запустить пилот!</b>\n\n<b>Какую систему используете?</b>",
+        "en": "🚀 <b>Start pilot!</b>\n\n<b>What system do you use?</b>",
+        "ka": "🚀 <b>პილოტის გაშვება!</b>\n\n<b>რომელ სისტემას იყენებთ?</b>",
+        "tr": "🚀 <b>Pilotu başlat!</b>\n\n<b>Hangi sistemi kullanıyorsunuz?</b>",
     }
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="AmoCRM", callback_data="cu_sys_amocrm"),
@@ -708,7 +708,7 @@ async def on_cu_funnel_pricing(callback: types.CallbackQuery):
         ),
     }
 
-    start_btn = {"ru": "🚀 Получить бесплатный пилот", "en": "🚀 Get Free Pilot", "ka": "🚀 უფასო პილოტი", "tr": "🚀 Ücretsiz Pilot"}
+    start_btn = {"ru": "🚀 Запустить пилот", "en": "🚀 Start Pilot", "ka": "🚀 პილოტის გაშვება", "tr": "🚀 Pilotu Başlat"}
     back_btn = {"ru": "← Назад", "en": "← Back", "ka": "← უკან", "tr": "← Geri"}
 
     kb = InlineKeyboardMarkup(inline_keyboard=[
