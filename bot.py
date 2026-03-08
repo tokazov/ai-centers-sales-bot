@@ -370,7 +370,7 @@ async def on_pay_callback(callback: types.CallbackQuery):
 
 
 async def show_funnel_step1(message: types.Message):
-    """Show sales funnel step 1: demo CTA + business qualification."""
+    """Show sales funnel: 3 blocks on /start."""
     logger.info(f"FUNNEL_STEP1 called for user {message.from_user.id}")
     uid = message.from_user.id
     session = get_session(uid)
@@ -379,21 +379,15 @@ async def show_funnel_step1(message: types.Message):
     session["funnel_shown"] = True
     name = message.from_user.first_name or "друг"
 
-    # Message 1: Demo CTA
-    demo_texts = {
-        "ru": "🎯 <b>Попробуйте демо-ассистента!</b>\n\nВыберите нишу (ресторан, клиника, салон) и пообщайтесь как клиент.\nТакой же бот будет у вас — только настроенный под ваш бизнес!",
-        "en": "🎯 <b>Try the demo assistant!</b>\n\nChoose a niche (restaurant, clinic, salon) and chat as a customer.\nThe same bot will be yours — customized for your business!",
-        "ka": "🎯 <b>სცადეთ დემო ასისტენტი!</b>\n\nაირჩიეთ ნიშა (რესტორანი, კლინიკა, სალონი) და ესაუბრეთ როგორც კლიენტი.\nიგივე ბოტი იქნება თქვენი — თქვენს ბიზნესზე მორგებული!",
-        "tr": "🎯 <b>Demo asistanı deneyin!</b>\n\nBir niş seçin (restoran, klinik, salon) ve müşteri gibi sohbet edin.\nAynı bot sizin olacak — işletmenize özel!",
-        "kk": "🎯 <b>Демо-ассистентті байқап көріңіз!</b>\n\nНиша таңдаңыз және клиент ретінде сөйлесіңіз.",
-        "uz": "🎯 <b>Demo-assistentni sinab ko'ring!</b>\n\nNisha tanlang va mijoz sifatida suhbatlashing.",
+    # ── Block 1: Business qualification ──
+    welcome_texts = {
+        "ru": f"👋 {name}, привет!\n\nЯ помогу автоматизировать ваш бизнес за 5 минут.\n<b>Какой у вас бизнес?</b>",
+        "en": f"👋 Hi {name}!\n\nI'll help automate your business in 5 minutes.\n<b>What's your business?</b>",
+        "ka": f"👋 გამარჯობა, {name}!\n\nდაგეხმარებით ბიზნესის ავტომატიზაციაში 5 წუთში.\n<b>რა ბიზნესი გაქვთ?</b>",
+        "tr": f"👋 Merhaba {name}!\n\nİşinizi 5 dakikada otomatikleştirmenize yardımcı olacağım.\n<b>İşiniz ne?</b>",
+        "kk": f"👋 {name}, сәлем!\n\nБизнесіңізді 5 минутта автоматтандыруға көмектесемін.",
+        "uz": f"👋 Salom, {name}!\n\nBiznesingizni 5 daqiqada avtomatlashtiraman.",
     }
-    demo_kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=t(lang, "btn_open_demo"), url="https://t.me/aicenters_demo_bot")],
-    ])
-    await message.answer(demo_texts.get(lang, demo_texts["en"]), reply_markup=demo_kb)
-
-    # Message 2: Business qualification
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=t(lang, "biz_restaurant"), callback_data="biz_restaurant"),
          InlineKeyboardButton(text=t(lang, "biz_clinic"), callback_data="biz_clinic")],
@@ -403,8 +397,39 @@ async def show_funnel_step1(message: types.Message):
          InlineKeyboardButton(text=t(lang, "biz_other"), callback_data="biz_other")],
         [InlineKeyboardButton(text="🖥 AI Computer Use", callback_data="biz_computer")],
     ])
-    await message.answer(t(lang, "welcome", name=name), reply_markup=kb)
-    logger.info(f"Funnel step 1: {uid} lang={lang}")
+    await message.answer(welcome_texts.get(lang, welcome_texts["en"]), reply_markup=kb)
+
+    # ── Block 2: Demo CTA ──
+    demo_texts = {
+        "ru": "🎯 <b>Попробуйте демо-ассистента!</b>\n\nВыберите нишу и пообщайтесь как клиент.\nТакой же бот будет у вас — настроенный под ваш бизнес!",
+        "en": "🎯 <b>Try the demo assistant!</b>\n\nChoose a niche and chat as a customer.\nThe same bot will be yours — customized for your business!",
+        "ka": "🎯 <b>სცადეთ დემო ასისტენტი!</b>\n\nაირჩიეთ ნიშა და ესაუბრეთ როგორც კლიენტი.\nიგივე ბოტი იქნება თქვენი — მორგებული!",
+        "tr": "🎯 <b>Demo asistanı deneyin!</b>\n\nBir niş seçin ve müşteri gibi sohbet edin.\nAynı bot sizin olacak — işletmenize özel!",
+        "kk": "🎯 <b>Демо-ассистентті байқап көріңіз!</b>",
+        "uz": "🎯 <b>Demo-assistentni sinab ko'ring!</b>",
+    }
+    demo_kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=t(lang, "btn_open_demo"), url="https://t.me/aicenters_demo_bot")],
+    ])
+    await message.answer(demo_texts.get(lang, demo_texts["en"]), reply_markup=demo_kb)
+
+    # ── Block 3: Computer Use ──
+    cu_texts = {
+        "ru": "🖥 <b>AI Computer Use — работает в ваших программах</b>\n\nAI сам открывает, заполняет, обрабатывает в AmoCRM, 1С, Bitrix24.",
+        "en": "🖥 <b>AI Computer Use — works in your software</b>\n\nAI opens, fills, processes in AmoCRM, 1C, Bitrix24 by itself.",
+        "ka": "🖥 <b>AI Computer Use — მუშაობს თქვენს პროგრამებში</b>\n\nAI თავად ხსნის, ავსებს, ამუშავებს AmoCRM, 1C, Bitrix24-ში.",
+        "tr": "🖥 <b>AI Computer Use — programlarınızda çalışır</b>\n\nAI, AmoCRM, 1C, Bitrix24'te açar, doldurur, işler.",
+        "kk": "🖥 <b>AI Computer Use — бағдарламаларыңызда жұмыс істейді</b>",
+        "uz": "🖥 <b>AI Computer Use — dasturlaringizda ishlaydi</b>",
+    }
+    cu_pilot_btn = {"ru": "🚀 Получить бесплатный пилот", "en": "🚀 Get Free Pilot", "ka": "🚀 უფასო პილოტი", "tr": "🚀 Ücretsiz Pilot", "kk": "🚀 Тегін пилот", "uz": "🚀 Bepul pilot"}
+    cu_pricing_btn = {"ru": "📋 Тарифы", "en": "📋 Pricing", "ka": "📋 ტარიფები", "tr": "📋 Tarifeler", "kk": "📋 Тарифтер", "uz": "📋 Tariflar"}
+    cu_kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=cu_pilot_btn.get(lang, cu_pilot_btn["en"]), callback_data="cu_funnel_pilot"),
+         InlineKeyboardButton(text=cu_pricing_btn.get(lang, cu_pricing_btn["en"]), callback_data="cu_funnel_pricing")],
+    ])
+    await message.answer(cu_texts.get(lang, cu_texts["en"]), reply_markup=cu_kb)
+    logger.info(f"Funnel step 1 (3 blocks): {uid} lang={lang}")
 
 
 @dp.message(CommandStart())
