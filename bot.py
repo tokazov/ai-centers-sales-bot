@@ -372,6 +372,12 @@ async def on_pay_bank(callback: types.CallbackQuery):
 @dp.callback_query(F.data.startswith("pay_"))
 async def on_pay_callback(callback: types.CallbackQuery):
     plan_key = callback.data.replace("pay_", "")
+    # Handle cu_activation_stars → cu_activation
+    if plan_key == "cu_activation_stars":
+        plan_key = "cu_activation"
+    if plan_key not in STAR_PLANS:
+        await callback.answer("❌ Тариф не найден")
+        return
     await send_stars_invoice(callback.message, plan_key)
     await callback.answer()
 
