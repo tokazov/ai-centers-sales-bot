@@ -1,1320 +1,1199 @@
 #!/usr/bin/env python3
 """
-AI Centers Sales Bot v2.0
-Telegram бот для продажи AI-ассистентов для бизнеса.
-Поддерживает: URL auto-setup, текстовый онбординг, Stars оплата, BotFather интеграция.
+AI Centers — Живой AI-рецепционист
+Общается естественно, создаёт помощников, продаёт через диалог
+@ai_centers_hub_bot
 """
 
 import os
 import json
 import logging
-import asyncio
+import urllib.request
+import tempfile
+import time
 import re
-import sqlite3
-from datetime import datetime
-from typing import Optional
-
-from aiogram import Bot, Dispatcher, F, Router
-from aiogram.types import (
-    Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton,
-    LabeledPrice, PreCheckoutQuery
-)
-from aiogram.filters import Command, StateFilter
-from aiogram.fsm.context import FSMContext
-from aiogram.fsm.state import State, StatesGroup
-from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.enums import ParseMode
+import collections
+from aiogram import Bot, Dispatcher, types, F
 from aiogram.client.default import DefaultBotProperties
-import google.generativeai as genai
-import aiohttp
+from aiogram.filters import CommandStart, Command
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile, LabeledPrice, WebAppInfo
+from aiogram.fsm.storage.memory import MemoryStorage
+import asyncio
 
-# ─── Logging ───
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# ─── Config ───
-BOT_TOKEN = os.getenv("BOT_TOKEN", "placeholder_token")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-ADMIN_CHAT_ID = int(os.getenv("ADMIN_CHAT_ID", "5309206282"))
-TIMUR_CHAT_ID = 644024059  # Тимур — уведомления о платежах
+from i18n import I18N
+
+SUPPORTED_LANGS = {"ru", "en", "ka", "tr", "kk", "uz"}
+
+def detect_lang(user) -> str:
+    """Detect language from Telegram language_code. Defaults to ru."""
+    code = (user.language_code or "ru")[:2].lower()
+    if code in SUPPORTED_LANGS:
+        return code
+    return "ru"  # kk/uz users mostly have ru interface
+
+def t(lang: str, key: str, **kwargs) -> str:
+    """Get translated text. Falls back to en → ru."""
+    texts = I18N.get(key, {})
+    if isinstance(texts, str):
+        return texts
+    text = texts.get(lang, texts.get("en", texts.get("ru", key)))
+    if kwargs:
+        text = text.format(**kwargs)
+    return text
+
+TOKEN = os.getenv("BOT_TOKEN", "")
+GEMINI_KEY = os.getenv("GEMINI_KEY", "")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+ADMIN_ID = 5309206282
+FREE_LIMIT = 20
+
+# Telegram Stars pricing
+STARS_WEEK = 150      # ~$2.5/week
+STARS_MONTH = 500     # ~$8/month (discount vs weekly)
+STARS_PREMIUM = 1500  # ~$25/month — all agents + priority
+STARS_CUSTOM = 3000   # ~$50 — custom bot consultation fee
 PLATFORM_API_URL = os.getenv("PLATFORM_API_URL", "https://platform-api-production-f313.up.railway.app")
-LEADS_FILE = "leads.json"
-PAYMENTS_DB = "payments.db"
+PLATFORM_API_KEY = os.getenv("PLATFORM_API_KEY", "")  # internal auth key
+COMPUTER_USE_BOT = os.getenv("COMPUTER_USE_BOT", "aicenters_computer_bot")
+ELEVENLABS_KEY = os.getenv("ELEVENLABS_KEY", "")
+VOICE_ID = os.getenv("VOICE_ID", "EXAVITQu4vr4xnSDxMaL")  # Sarah — warm female voice for receptionist
+VOICE_ENABLED = bool(ELEVENLABS_KEY)
+OPENAI_KEY = os.getenv("OPENAI_KEY", "")
+OPENAI_KEY = os.getenv("OPENAI_KEY", "")
 
-# ─── Gemini ───
-genai.configure(api_key=GEMINI_API_KEY)
-gemini_model = genai.GenerativeModel('gemini-2.5-flash')
+bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
+dp = Dispatcher(storage=MemoryStorage())
 
-SALES_PROMPT = """Ты — консультант AI Centers. Помогаешь бизнесу получить AI-ассистента.
+# user_id -> {"history": [], "count": int, "mode": str, "persona": str}
+sessions = {}
 
-КЛЮЧЕВОЕ ПРЕДЛОЖЕНИЕ:
-- Создание AI-бота: от $149 (разово) + от $19/мес (абонплата)
-- Работает 24/7, отвечает клиентам, записывает на услуги
-- Настройка за 5 минут если есть сайт, или за 24 часа по описанию
-- Дешевле сотрудника в 50 раз
+# ── Rate limiting: 30 messages per minute per user ──
+_rate_buckets: dict[int, collections.deque] = {}
+RATE_LIMIT_PER_MINUTE = 30
 
-ТВОЯ ЗАДАЧА: выяснить что за бизнес, предложить подходящий тариф, привести к оплате.
-Если клиент скинул URL сайта — предложи auto-setup (бот за 5 минут).
-Определи язык клиента и отвечай на нём. Будь конкретным, не лей воду."""
+def check_rate_limit(uid: int) -> bool:
+    """Returns True if user exceeded rate limit (30 msg/min)."""
+    now = time.time()
+    if uid not in _rate_buckets:
+        _rate_buckets[uid] = collections.deque()
+    q = _rate_buckets[uid]
+    while q and now - q[0] > 60:
+        q.popleft()
+    if len(q) >= RATE_LIMIT_PER_MINUTE:
+        return True
+    q.append(now)
+    return False
 
-# ─── FSM States ───
-class ContactForm(StatesGroup):
-    waiting_for_name = State()
-    waiting_for_business = State()
-    waiting_for_niche = State()
-    waiting_for_contact = State()
+# ── Prompt injection detection ──
+_INJECTION_RE = re.compile(
+    r'ignore\s+(all\s+)?previous\s+instructions?'
+    r'|forget\s+(all\s+)?previous'
+    r'|new\s+(system\s+)?prompt[:\s]'
+    r'|\[system\]|\bsystem\s*:'
+    r'|disregard\s+(all\s+)?'
+    r'|забудь\s+(все\s+)?предыдущие'
+    r'|игнорируй\s+(все\s+)?предыдущие'
+    r'|ты\s+теперь\s+(?!алекс)'
+    r'|новый\s+(системный\s+)?промпт'
+    r'|претворись\s+что|притворись\s+что'
+    r'|act\s+as\s+if|pretend\s+(you\s+are|to\s+be)',
+    re.IGNORECASE,
+)
 
-class Onboarding(StatesGroup):
-    waiting_for_business_name = State()
-    waiting_for_niche = State()
-    waiting_for_description = State()
-    waiting_for_phone = State()
-    waiting_for_address = State()
-    waiting_for_schedule = State()
-    waiting_for_services = State()
-    waiting_for_bot_token = State()
+def detect_injection(text: str) -> bool:
+    """Returns True if text looks like a prompt injection attempt."""
+    return bool(_INJECTION_RE.search(text))
 
-class URLSetup(StatesGroup):
-    waiting_for_url_confirm = State()
-    waiting_for_plan_select = State()
-    waiting_for_bot_token = State()
+SYSTEM_PROMPT = """Ты — АЛЕКС, AI-рецепционист компании AI CENTERS (aicenters.co).
+Ты — СОТРУДНИК компании, которая создаёт AI-ботов для бизнеса.
+НИКОГДА не рекомендуй сторонние сервисы (ManyChat, Salebot и т.д.) — МЫ сами делаем ботов.
 
-# ─── Plans (DUAL PRICING — creation + subscription) ───
-PLANS = {
-    "starter": {
-        "name": "Starter",
-        "creation_price": "$149",
-        "monthly_price": "$19/мес",
-        "stars_creation": 249,
-        "stars_monthly": 15,
-        "features": [
-            "✓ 1 AI-агент",
-            "✓ Telegram канал",
-            "✓ База знаний из сайта",
-            "✓ Безлимит сообщений"
-        ]
-    },
-    "pro": {
-        "name": "Pro",
-        "creation_price": "$299",
-        "monthly_price": "$49/мес",
-        "stars_creation": 799,
-        "stars_monthly": 29,
-        "badge": "⭐ Популярный",
-        "features": [
-            "✓ 3 AI-агента",
-            "✓ Мультиканал (TG + WA + IG)",
-            "✓ CRM интеграция",
-            "✓ Аналитика и статистика",
-            "✓ Приоритетная поддержка"
-        ]
-    },
-    "business": {
-        "name": "Business",
-        "creation_price": "$499",
-        "monthly_price": "$79/мес",
-        "stars_creation": 999,
-        "stars_monthly": 59,
-        "features": [
-            "✓ 10 AI-агентов",
-            "✓ Голосовой AI",
-            "✓ Белый лейбл",
-            "✓ Персональный менеджер",
-            "✓ SLA гарантия"
-        ]
-    },
-    "enterprise": {
-        "name": "Enterprise",
-        "creation_price": "$1,499",
-        "monthly_price": "$199/мес",
-        "stars_creation": 2499,
-        "stars_monthly": 149,
-        "features": [
-            "✓ Безлимит агентов",
-            "✓ Свой API ключ",
-            "✓ Любые интеграции",
-            "✓ Выделенный менеджер",
-            "✓ SLA 99.9%"
-        ]
-    }
-}
+КАК ТЫ ОБЩАЕШЬСЯ:
+- Как друг, не как робот. Просто, тепло, с юмором.
+- Коротко. 2-4 предложения максимум.
+- Используй HTML теги (<b>, <i>) умеренно.
 
-NICHES = [
-    ("restaurant", "🍽 Ресторан"),
-    ("salon", "💇 Салон"),
-    ("delivery", "🚚 Доставка"),
-    ("hotel", "🏨 Отель"),
-    ("fitness", "💪 Фитнес"),
-    ("clinic", "⚕️ Клиника"),
-    ("realestate", "🏠 Недвижимость"),
-    ("education", "📚 Образование"),
-    ("other", "📝 Другое")
-]
+ЧТО ТЫ ДЕЛАЕШЬ:
+1. Общаешься с человеком, узнаёшь что ему нужно
+2. Если хочет создать бота — предлагаешь создать AI-помощника прямо здесь
+3. Когда описал помощника — включи маркер [CREATE_ASSISTANT: описание]
+4. Продаёшь мягко, через ценность
+5. Если спрашивают об оплате — объясни что оплата через Telegram Stars ⭐
 
-FAQ_ANSWERS = {
-    "how_it_works": """🔧 <b>Как это работает?</b>
+⚠️ ЗАПРЕЩЕНО — НЕ ДЕЛАЙ ЭТОГО:
+- НЕ рисуй кнопки текстом (никаких "Попробовать демо", "Тарифы", "Связаться", "FAQ")
+- НЕ показывай меню — кнопки создаёт система, не ты
+- НЕ перечисляй все услуги сразу — спрашивай, слушай, рекомендуй точечно
+- НЕ генерируй ссылки на ботов (@..._bot) — система сама покажет нужные кнопки
+- НЕ говори "я всего лишь AI" или "я не могу помочь"
 
-<b>Способ 1 — Автоматически (5 минут):</b>
-1. Скиньте ссылку на ваш сайт
-2. AI проанализирует бизнес
-3. Оплатите тариф
-4. Получите готового бота!
+СОЗДАНИЕ AI-ПОМОЩНИКА:
+У нас 20 бесплатных сообщений для теста.
+Маркер: [CREATE_ASSISTANT: описание помощника]
 
-<b>Способ 2 — Вручную (24 часа):</b>
-1. Выберите тариф и оплатите
-2. Заполните информацию о бизнесе
-3. Наш AI создаёт бота
-4. Тестируете и запускаете
+ТАРИФЫ (упоминай только когда спрашивают):
+- Starter: $149 + $19/мес — 1 бот
+- Pro: $299 + $49/мес — 3 бота
+- Business: $499 + $79/мес — 10 ботов
 
-Бот отвечает клиентам 24/7, записывает на услуги, консультирует.""",
+ОПЛАТА (если клиент готов платить — добавь маркер):
+[PAY:week] — 150 ⭐, [PAY:month] — 500 ⭐, [PAY:premium] — 1500 ⭐, [PAY:custom] — от 3000 ⭐
+
+ЯЗЫК:
+- Определяй язык клиента по его сообщению и отвечай на ТОМ ЖЕ языке
+- НЕ СПРАШИВАЙ на каком языке общаться
+
+Сайт: aicenters.co | Основатель: @timurtokazov
+"""
+
+ASSISTANT_SYSTEM = """Ты — персональный AI-помощник. Твоя роль:
+{persona}
+
+ПРАВИЛА:
+- Общайся живо, по-дружески, коротко
+- Отвечай строго в рамках своей роли
+- Используй HTML теги (<b>, <i>) умеренно
+- Будь полезным и конкретным
+- Не выходи из роли
+- ВСЕГДА отвечай на том же языке, на котором пишет клиент (автоопределение)
+"""
+
+
+def gemini_chat(system: str, history: list, user_msg: str) -> str:
+    messages = []
+
+    for msg in history[-15:]:
+        messages.append({"role": "user", "parts": [{"text": msg["user"]}]})
+        messages.append({"role": "model", "parts": [{"text": msg["bot"]}]})
+
+    messages.append({"role": "user", "parts": [{"text": user_msg}]})
+
+    # Use native systemInstruction — keeps system prompt out of user-turn context
+    data = json.dumps({
+        "systemInstruction": {"parts": [{"text": system}]},
+        "contents": messages,
+        "generationConfig": {"maxOutputTokens": 1024, "temperature": 0.9}
+    }).encode()
     
-    "pricing": """💰 <b>Тарифы (создание + абонплата):</b>
-
-📦 <b>Starter</b> — $149 + $19/мес
-1 бот, Telegram, безлимит сообщений
-
-📦 <b>Pro</b> — $299 + $49/мес ⭐
-3 бота, мультиканал, CRM, аналитика
-
-📦 <b>Business</b> — $499 + $79/мес
-10 ботов, голосовой AI, белый лейбл
-
-📦 <b>Enterprise</b> — $1,499 + $199/мес
-Безлимит, API, любые интеграции
-
-Без скрытых платежей. Гарантия 50% автоматизации или возврат.""",
+    req = urllib.request.Request(
+        f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent?key={GEMINI_KEY}",
+        data=data,
+        headers={"Content-Type": "application/json"}
+    )
     
-    "speed": """⚡ <b>Как быстро запустите?</b>
-
-🚀 <b>Есть сайт?</b> → 5 минут! Скиньте ссылку — бот проанализирует и создаст AI-ассистента автоматически.
-
-📝 <b>Нет сайта?</b> → 24 часа. Заполните анкету, мы всё настроим.
-
-Поддержка 24/7 на всех тарифах.""",
-    
-    "niches": """🎯 <b>Какие ниши?</b>
-
-Готовые шаблоны:
-• 🦷 Стоматология
-• 🍽 Рестораны и кафе
-• 💇 Салоны красоты
-• 🏠 Недвижимость
-• 💪 Фитнес-клубы
-• 🏨 Отели
-• 🚚 Доставка
-• ⚕️ Клиники
-
-Но мы настраиваем под <b>любой бизнес</b> — автосервис, юристы, магазины, школы.
-
-AI учится на вашем сайте или описании за минуты.""",
-    
-    "guarantee": """🛡 <b>Гарантия качества</b>
-
-✅ <b>50% автоматизации или возврат</b>
-Если бот за 30 дней не решает 50% обращений автоматически — возвращаем деньги.
-
-✅ Без скрытых платежей
-✅ Мгновенная отмена подписки
-✅ Уведомление за 3 дня до списания
-✅ Экспорт данных в любой момент
-✅ Без автоповышения тарифа
-
-Подробнее: aicenters.co/pricing-promise"""
-}
-
-
-# ─── Bot Init ───
-bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
-storage = MemoryStorage()
-dp = Dispatcher(storage=storage)
-router = Router()
-
-
-# ─── Helpers ───
-def save_lead(lead_data: dict):
-    leads = []
-    if os.path.exists(LEADS_FILE):
-        with open(LEADS_FILE, 'r', encoding='utf-8') as f:
-            try: leads = json.load(f)
-            except: leads = []
-    lead_data['timestamp'] = datetime.now().isoformat()
-    leads.append(lead_data)
-    with open(LEADS_FILE, 'w', encoding='utf-8') as f:
-        json.dump(leads, f, ensure_ascii=False, indent=2)
-
-
-# ─── Payments DB ───
-def init_payments_db():
-    """Create payments table if not exists."""
-    conn = sqlite3.connect(PAYMENTS_DB)
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS payments (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
-            username TEXT,
-            full_name TEXT,
-            plan TEXT NOT NULL,
-            amount INTEGER NOT NULL,
-            currency TEXT DEFAULT 'XTR',
-            payload TEXT,
-            date TEXT NOT NULL,
-            status TEXT DEFAULT 'completed'
-        )
-    """)
-    conn.commit()
-    conn.close()
-    logger.info("Payments DB initialized")
-
-
-def save_payment(user_id: int, username: str, full_name: str, plan: str, amount: int, payload: str = ""):
-    """Save a completed payment to SQLite."""
     try:
-        conn = sqlite3.connect(PAYMENTS_DB)
-        conn.execute(
-            "INSERT INTO payments (user_id, username, full_name, plan, amount, payload, date, status) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (user_id, username or "", full_name or "", plan, amount, payload,
-             datetime.now().isoformat(), "completed")
-        )
-        conn.commit()
-        conn.close()
-        logger.info(f"Payment saved: user={user_id}, plan={plan}, amount={amount} Stars")
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            result = json.loads(resp.read())
+            return result["candidates"][0]["content"]["parts"][0]["text"]
     except Exception as e:
-        logger.error(f"Failed to save payment: {e}")
+        logger.error(f"Gemini error: {e}")
+        return "Ой, что-то пошло не так. Попробуй ещё раз через секунду 😅"
 
 
-def is_url(text: str) -> bool:
-    """Check if text looks like a URL."""
-    return bool(re.match(r'^https?://[^\s<>"\']+$', text.strip()))
-
-
-async def scrape_preview(url: str) -> Optional[dict]:
-    """Quick scrape to show client what we found on their site."""
+async def text_to_voice(text: str) -> str | None:
+    """Convert text to voice via ElevenLabs."""
+    if not VOICE_ENABLED or len(text) > 800:
+        return None
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, timeout=aiohttp.ClientTimeout(total=10),
-                                   headers={"User-Agent": "Mozilla/5.0 (compatible; AICentersBot/1.0)"}) as resp:
-                if resp.status != 200:
-                    return None
-                html = await resp.text()
-        
-        # Extract title
-        title_match = re.search(r'<title[^>]*>([^<]+)</title>', html, re.IGNORECASE)
-        title = title_match.group(1).strip() if title_match else url
-        
-        # Extract meta description
-        desc_match = re.search(r'<meta[^>]*name=["\']description["\'][^>]*content=["\']([^"\']+)', html, re.IGNORECASE)
-        if not desc_match:
-            desc_match = re.search(r'<meta[^>]*content=["\']([^"\']+)["\'][^>]*name=["\']description', html, re.IGNORECASE)
-        description = desc_match.group(1).strip()[:200] if desc_match else ""
-        
-        # Extract phone numbers
-        phones = re.findall(r'[\+]?[0-9\s\-\(\)]{7,15}', html)
-        phones = list(set([p.strip() for p in phones if len(p.strip()) >= 7]))[:3]
-        
-        # Count text length (rough content size indicator)
-        text = re.sub(r'<[^>]+>', ' ', html)
-        text = re.sub(r'\s+', ' ', text).strip()
-        text_len = len(text)
-        
-        return {
-            "title": title[:100],
-            "description": description,
-            "phones": phones,
-            "text_length": text_len,
-            "url": url
-        }
+        data = json.dumps({
+            "text": text,
+            "model_id": "eleven_multilingual_v2",
+            "voice_settings": {"stability": 0.5, "similarity_boost": 0.75}
+        }).encode()
+        req = urllib.request.Request(
+            f"https://api.elevenlabs.io/v1/text-to-speech/{VOICE_ID}",
+            data=data,
+            headers={"xi-api-key": ELEVENLABS_KEY, "Content-Type": "application/json", "Accept": "audio/mpeg"}
+        )
+        resp = urllib.request.urlopen(req, timeout=15)
+        tmp = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)
+        tmp.write(resp.read())
+        tmp.close()
+        return tmp.name
     except Exception as e:
-        logger.error(f"Scrape preview failed for {url}: {e}")
+        logger.error(f"TTS error: {e}")
         return None
 
 
-# ─── Keyboards ───
-def get_main_menu():
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🌐 У меня есть сайт — создать бота за 5 мин", callback_data="url_setup")],
-        [InlineKeyboardButton(text="🎯 Попробовать демо", callback_data="demo")],
-        [InlineKeyboardButton(text="💰 Тарифы", callback_data="pricing")],
-        [InlineKeyboardButton(text="📞 Связаться", callback_data="contact")],
-        [InlineKeyboardButton(text="❓ FAQ", callback_data="faq")]
-    ])
-
-
-def get_pricing_keyboard():
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=f"Starter — $149 + $19/мес", callback_data="buy_starter")],
-        [InlineKeyboardButton(text=f"Pro — $299 + $49/мес ⭐", callback_data="buy_pro")],
-        [InlineKeyboardButton(text=f"Business — $499 + $79/мес", callback_data="buy_business")],
-        [InlineKeyboardButton(text=f"Enterprise — $1,499", callback_data="buy_enterprise")],
-        [InlineKeyboardButton(text="◀️ Назад", callback_data="back_to_menu")]
-    ])
-
-
-def get_plan_select_keyboard():
-    """Keyboard for URL setup plan selection."""
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Starter — $149 + $19/мес", callback_data="urlplan_starter")],
-        [InlineKeyboardButton(text="Pro — $299 + $49/мес ⭐", callback_data="urlplan_pro")],
-        [InlineKeyboardButton(text="Business — $499 + $79/мес", callback_data="urlplan_business")],
-        [InlineKeyboardButton(text="Enterprise — $1,499", callback_data="urlplan_enterprise")],
-        [InlineKeyboardButton(text="◀️ Назад", callback_data="back_to_menu")]
-    ])
-
-
-def get_niche_keyboard():
-    buttons = [[InlineKeyboardButton(text=name, callback_data=f"niche_{code}")] for code, name in NICHES]
-    return InlineKeyboardMarkup(inline_keyboard=buttons)
-
-
-def get_faq_keyboard():
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Как это работает?", callback_data="faq_how_it_works")],
-        [InlineKeyboardButton(text="Сколько стоит?", callback_data="faq_pricing")],
-        [InlineKeyboardButton(text="Как быстро запустите?", callback_data="faq_speed")],
-        [InlineKeyboardButton(text="Какие ниши?", callback_data="faq_niches")],
-        [InlineKeyboardButton(text="Гарантия качества", callback_data="faq_guarantee")],
-        [InlineKeyboardButton(text="◀️ Назад", callback_data="back_to_menu")]
-    ])
-
-
-def get_back_keyboard():
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="◀️ Назад в меню", callback_data="back_to_menu")]
-    ])
-
-
-def get_botfather_keyboard():
-    """Keyboard with BotFather link + skip."""
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🤖 Открыть @BotFather", url="https://t.me/BotFather")],
-        [InlineKeyboardButton(text="⏩ Пропустить — создайте за меня", callback_data="skip_bot_token")],
-        [InlineKeyboardButton(text="◀️ Отмена", callback_data="back_to_menu")]
-    ])
-
-
-# ─── /start ───
-@router.message(Command("start"))
-async def cmd_start(message: Message, state: FSMContext):
-    await state.clear()
-    
-    args = message.text.split(maxsplit=1)
-    if len(args) > 1:
-        param = args[1]
-        
-        # Partner referral link: /start ref_XXXXXXXX
-        if param.startswith("ref_"):
-            ref_code = param.replace("ref_", "")
-            await state.update_data(ref_code=ref_code)
-            logger.info(f"Referral from partner: {ref_code}, user: {message.from_user.id}")
-        
-        # Direct buy deeplink: /start buy_starter
-        if param.startswith("buy_"):
-            plan_id = param.replace("buy_", "")
-            plan = PLANS.get(plan_id)
-            if plan:
-                prices = [LabeledPrice(label=f"Создание {plan['name']}", amount=plan['stars_creation'])]
-                desc = f"{plan['name']} — {plan['creation_price']} разово + {plan['monthly_price']}\n" + "\n".join(plan['features'])
+async def send_with_voice(message: types.Message, text: str):
+    """Send text + optional voice message."""
+    await message.answer(text)
+    if VOICE_ENABLED:
+        # Strip HTML tags for TTS
+        import re
+        clean = re.sub(r'<[^>]+>', '', text)
+        clean = re.sub(r'💬.*$', '', clean, flags=re.MULTILINE).strip()  # remove counter line
+        clean = re.sub(r'—{5,}', '', clean).strip()
+        if len(clean) > 20 and len(clean) <= 800:
+            voice_path = await text_to_voice(clean)
+            if voice_path:
                 try:
-                    await bot.send_invoice(
-                        chat_id=message.chat.id, title=f"AI Centers — {plan['name']}",
-                        description=desc, payload=f"plan_{plan_id}",
-                        provider_token="", currency="XTR", prices=prices
-                    )
-                    return
+                    await message.answer_voice(FSInputFile(voice_path))
                 except Exception as e:
-                    logger.error(f"Deeplink invoice error: {e}")
-        
-        # Partner registration: /start partner
-        if param == "partner":
-            await message.answer(
-                "🤝 <b>Партнёрская программа AI Centers</b>\n\n"
-                "Зарабатывайте 20-50% с каждого клиента!\n\n"
-                "🥉 Bronze: 20% (старт)\n"
-                "🥈 Silver: 35% (от 5 продаж)\n"
-                "🥇 Gold: 50% (от 15 продаж)\n\n"
-                "📊 Подробнее: aicenters.co/partners\n\n"
-                "Чтобы стать партнёром, нажмите кнопку:",
-                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                    [InlineKeyboardButton(text="✅ Стать партнёром", callback_data="become_partner")],
-                    [InlineKeyboardButton(text="◀️ Назад", callback_data="back_to_menu")]
-                ])
+                    logger.error(f"Voice send error: {e}")
+                finally:
+                    os.unlink(voice_path)
+
+
+def get_session(uid: int) -> dict:
+    if uid not in sessions:
+        sessions[uid] = {"history": [], "count": 0, "mode": "receptionist", "persona": None}
+    return sessions[uid]
+
+
+# === Stars Payment Handlers ===
+
+STAR_PLANS = {
+    "week": {"title": "AI Centers — Неделя ⭐", "description": "7 дней безлимитного общения с AI-помощником", "stars": STARS_WEEK, "days": 7},
+    "month": {"title": "AI Centers — Месяц ⭐", "description": "30 дней безлимитного общения + все агенты", "stars": STARS_MONTH, "days": 30},
+    "premium": {"title": "AI Centers Premium ⭐", "description": "30 дней — все агенты, приоритет, голосовые ответы", "stars": STARS_PREMIUM, "days": 30},
+    "custom": {"title": "AI-бот под ключ ⭐", "description": "Консультация + создание персонального AI-бота", "stars": STARS_CUSTOM, "days": 0},
+}
+
+# user_id -> {"paid_until": timestamp, "plan": str}
+paid_users = {}
+
+import time as _time
+
+def is_paid(uid: int) -> bool:
+    info = paid_users.get(uid)
+    if not info:
+        return False
+    return info.get("paid_until", 0) > _time.time()
+
+
+async def send_stars_invoice(message: types.Message, plan_key: str):
+    plan = STAR_PLANS.get(plan_key)
+    if not plan:
+        return
+    await message.answer_invoice(
+        title=plan["title"],
+        description=plan["description"],
+        payload=f"plan_{plan_key}",
+        currency="XTR",
+        prices=[LabeledPrice(label=plan["title"], amount=plan["stars"])],
+        provider_token="",
+    )
+
+
+@dp.pre_checkout_query()
+async def on_pre_checkout(query: types.PreCheckoutQuery):
+    await query.answer(ok=True)
+
+
+@dp.message(F.successful_payment)
+async def on_payment(message: types.Message):
+    uid = message.from_user.id
+    payment = message.successful_payment
+    payload = payment.invoice_payload  # e.g. "plan_week"
+    plan_key = payload.replace("plan_", "")
+    plan = STAR_PLANS.get(plan_key, {})
+    days = plan.get("days", 7)
+    
+    if days > 0:
+        now = _time.time()
+        existing = paid_users.get(uid, {}).get("paid_until", now)
+        start = max(existing, now)
+        paid_users[uid] = {"paid_until": start + days * 86400, "plan": plan_key}
+    
+    session = get_session(uid)
+    session["count"] = 0  # reset message counter
+    
+    stars = payment.total_amount
+    user = message.from_user
+
+    # ── Persist to platform-api (same as Cryptomus/TBC) ──
+    try:
+        import aiohttp
+        async with aiohttp.ClientSession() as http:
+            await http.post(
+                f"{PLATFORM_API_URL}/internal/activate",
+                json={
+                    "user_id": uid,
+                    "plan": plan_key,
+                    "payment_method": "telegram_stars",
+                    "payment_ref": f"stars_{payment.telegram_payment_charge_id}",
+                    "stars": stars,
+                    "username": user.username or "",
+                    "full_name": user.full_name or "",
+                },
+                headers={"X-Internal-Key": PLATFORM_API_KEY},
+                timeout=aiohttp.ClientTimeout(total=10),
             )
-            return
-    
-    welcome = """👋 <b>AI Centers</b> — создаём AI-ассистентов для бизнеса.
-
-🌐 <b>Есть сайт?</b> Скиньте ссылку — бот будет готов за 5 минут!
-
-Или выберите действие:"""
-    
-    await message.answer(welcome, reply_markup=get_main_menu())
-
-
-# ─── URL Auto-Setup Flow ───
-
-@router.callback_query(F.data == "url_setup")
-async def url_setup_start(callback: CallbackQuery, state: FSMContext):
-    await callback.message.edit_text(
-        "🌐 <b>Автоматическое создание бота</b>\n\n"
-        "Отправьте ссылку на ваш сайт.\n"
-        "AI проанализирует бизнес и создаст бота с полной базой знаний.\n\n"
-        "Пример: <code>https://example.com</code>",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="◀️ Назад", callback_data="back_to_menu")]
-        ])
-    )
-    await state.set_state(URLSetup.waiting_for_url_confirm)
-    await callback.answer()
-
-
-@router.message(StateFilter(URLSetup.waiting_for_url_confirm))
-async def url_setup_received(message: Message, state: FSMContext):
-    """Client sent a URL — scrape preview and confirm."""
-    url = message.text.strip()
-    
-    if not is_url(url):
-        await message.answer(
-            "❌ Это не похоже на ссылку. Отправьте URL в формате:\n"
-            "<code>https://example.com</code>",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="◀️ Назад", callback_data="back_to_menu")]
-            ])
-        )
-        return
-    
-    await message.answer("⏳ Анализирую сайт...")
-    await bot.send_chat_action(message.chat.id, "typing")
-    
-    preview = await scrape_preview(url)
-    
-    if not preview or preview["text_length"] < 100:
-        await message.answer(
-            "😕 Не удалось прочитать сайт. Возможно он защищён или не загружается.\n\n"
-            "Вы можете:\n"
-            "• Попробовать другую ссылку\n"
-            "• Или описать бизнес вручную — мы создадим бота за 24 часа",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="📝 Описать вручную", callback_data="contact")],
-                [InlineKeyboardButton(text="◀️ Назад", callback_data="back_to_menu")]
-            ])
-        )
-        return
-    
-    # Save URL for later
-    await state.update_data(url=url, site_title=preview["title"])
-    
-    phones_text = ", ".join(preview["phones"]) if preview["phones"] else "не найдены"
-    
-    preview_text = f"""✅ <b>Сайт проанализирован!</b>
-
-🏢 <b>{preview['title']}</b>
-📝 {preview['description'][:150] + '...' if len(preview['description']) > 150 else preview['description']}
-📞 Телефоны: {phones_text}
-📊 Контент: {preview['text_length']:,} символов
-
-AI создаст бота на основе всей информации с сайта:
-• Услуги и цены
-• Контакты и адрес
-• FAQ и описание
-• Расписание работы
-
-<b>Выберите тариф для создания:</b>"""
-    
-    await message.answer(preview_text, reply_markup=get_plan_select_keyboard())
-    await state.set_state(URLSetup.waiting_for_plan_select)
-
-
-@router.callback_query(StateFilter(URLSetup.waiting_for_plan_select), F.data.startswith("urlplan_"))
-async def url_plan_selected(callback: CallbackQuery, state: FSMContext):
-    """Plan selected for URL setup — show Stars pay button."""
-    plan_id = callback.data.replace("urlplan_", "")
-    plan = PLANS.get(plan_id)
-    if not plan:
-        await callback.answer("❌ Тариф не найден", show_alert=True)
-        return
-
-    await state.update_data(plan=plan_id)
-
-    features_text = "\n".join(plan['features'])
-    badge = f" {plan['badge']}" if "badge" in plan else ""
-    text = (
-        f"📦 <b>{plan['name']}</b>{badge}\n"
-        f"💵 {plan['creation_price']} разово + {plan['monthly_price']}\n\n"
-        f"{features_text}\n\n"
-        f"💫 Оплата: <b>{plan['stars_creation']} Telegram Stars</b>"
-    )
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=f"💫 Оплатить {plan['stars_creation']} Stars", callback_data=f"url_pay_stars_{plan_id}")],
-        [InlineKeyboardButton(text="◀️ Назад к тарифам", callback_data="url_setup")]
-    ])
-    await callback.message.edit_text(text, reply_markup=keyboard)
-    await callback.answer()
-
-
-@router.callback_query(F.data.startswith("url_pay_stars_"))
-async def send_url_stars_invoice(callback: CallbackQuery, state: FSMContext):
-    """Send Stars invoice for URL setup flow."""
-    plan_id = callback.data.replace("url_pay_stars_", "")
-    plan = PLANS.get(plan_id)
-    if not plan:
-        await callback.answer("❌ Тариф не найден", show_alert=True)
-        return
-
-    prices = [LabeledPrice(label=f"Создание {plan['name']}", amount=plan['stars_creation'])]
-    desc = f"{plan['name']} — {plan['creation_price']} разово\n+ {plan['monthly_price']} абонплата\n\n" + "\n".join(plan['features'])
-
-    try:
-        await bot.send_invoice(
-            chat_id=callback.message.chat.id,
-            title=f"AI Centers — {plan['name']}",
-            description=desc,
-            payload=f"url_plan_{plan_id}",
-            provider_token="",
-            currency="XTR",
-            prices=prices
-        )
-        await callback.answer("✨ Счёт создан!")
+        logger.info(f"Stars payment synced to platform-api: uid={uid} plan={plan_key}")
     except Exception as e:
-        logger.error(f"URL plan invoice error: {e}")
-        await callback.answer("❌ Ошибка. Попробуйте позже.", show_alert=True)
+        logger.error(f"Failed to sync Stars payment to platform-api: {e}")
+        # Payment still works locally even if platform-api is down
 
-
-# ─── Callbacks ───
-
-@router.callback_query(F.data == "back_to_menu")
-async def back_to_menu(callback: CallbackQuery, state: FSMContext):
-    await state.clear()
-    welcome = """👋 <b>AI Centers</b> — создаём AI-ассистентов для бизнеса.
-
-🌐 <b>Есть сайт?</b> Скиньте ссылку — бот будет готов за 5 минут!
-
-Или выберите действие:"""
-    await callback.message.edit_text(welcome, reply_markup=get_main_menu())
-    await callback.answer()
-
-
-@router.callback_query(F.data == "demo")
-async def show_demo(callback: CallbackQuery):
-    await callback.message.edit_text(
-        "🎯 <b>Попробуйте демо-ботов!</b>\n\n"
-        "👉 @aicenters_demo_bot\n\n"
-        "Выберите нишу (ресторан, клиника, салон) и пообщайтесь как клиент.\n"
-        "Такой же бот будет у вас — только настроенный под ваш бизнес!",
-        reply_markup=get_back_keyboard()
-    )
-    await callback.answer()
-
-
-@router.callback_query(F.data == "pricing")
-async def show_pricing(callback: CallbackQuery):
-    text = "💰 <b>Тарифы (создание + абонплата):</b>\n\n"
-    for pid, plan in PLANS.items():
-        text += f"━━━━━━━━━━━━━━━\n"
-        text += f"📦 <b>{plan['name']}</b>"
-        if "badge" in plan:
-            text += f" {plan['badge']}"
-        text += f"\n💵 {plan['creation_price']} разово + {plan['monthly_price']}\n\n"
-        text += "\n".join(plan['features'])
-        text += "\n\n"
-    text += "━━━━━━━━━━━━━━━\n🛡 Гарантия 50% автоматизации или возврат"
-    await callback.message.edit_text(text, reply_markup=get_pricing_keyboard())
-    await callback.answer()
-
-
-@router.callback_query(F.data == "contact")
-async def start_contact_form(callback: CallbackQuery, state: FSMContext):
-    await callback.message.edit_text("📝 Давайте познакомимся.\n\n<b>Как вас зовут?</b>")
-    await state.set_state(ContactForm.waiting_for_name)
-    await callback.answer()
-
-
-@router.callback_query(F.data == "faq")
-async def show_faq(callback: CallbackQuery):
-    await callback.message.edit_text("❓ <b>Часто задаваемые вопросы:</b>", reply_markup=get_faq_keyboard())
-    await callback.answer()
-
-
-@router.callback_query(F.data.startswith("faq_"))
-async def show_faq_answer(callback: CallbackQuery):
-    qid = callback.data.replace("faq_", "")
-    answer = FAQ_ANSWERS.get(qid, "Ответ не найден")
-    await callback.message.edit_text(answer, reply_markup=get_back_keyboard())
-    await callback.answer()
-
-
-# ─── Contact Form ───
-
-@router.message(StateFilter(ContactForm.waiting_for_name))
-async def process_name(message: Message, state: FSMContext):
-    await state.update_data(name=message.text)
-    await message.answer("<b>Как называется ваш бизнес?</b>")
-    await state.set_state(ContactForm.waiting_for_business)
-
-@router.message(StateFilter(ContactForm.waiting_for_business))
-async def process_business(message: Message, state: FSMContext):
-    await state.update_data(business=message.text)
-    await message.answer("<b>В какой нише?</b>", reply_markup=get_niche_keyboard())
-    await state.set_state(ContactForm.waiting_for_niche)
-
-@router.callback_query(StateFilter(ContactForm.waiting_for_niche), F.data.startswith("niche_"))
-async def process_niche(callback: CallbackQuery, state: FSMContext):
-    niche_code = callback.data.replace("niche_", "")
-    niche_name = next((name for code, name in NICHES if code == niche_code), "Неизвестно")
-    await state.update_data(niche=niche_name)
-    await callback.message.edit_text("<b>Как с вами связаться?</b>\n\nТелефон или @username:")
-    await state.set_state(ContactForm.waiting_for_contact)
-    await callback.answer()
-
-@router.message(StateFilter(ContactForm.waiting_for_contact))
-async def process_contact(message: Message, state: FSMContext):
-    data = await state.get_data()
-    data['contact'] = message.text
-    data['user_id'] = message.from_user.id
-    data['username'] = message.from_user.username
-    save_lead(data)
+    await message.answer(f"🎉 Оплата прошла! {stars} ⭐ — спасибо!\n\nТеперь у тебя безлимит {'на ' + str(days) + ' дней' if days > 0 else ''}. Пиши что угодно! 🚀")
     
-    admin_msg = (f"🆕 <b>Новая заявка!</b>\n\n"
-                 f"👤 {data['name']}\n🏢 {data['business']}\n"
-                 f"🎯 {data['niche']}\n📞 {data['contact']}\n"
-                 f"🆔 {data['user_id']} @{data.get('username', '')}")
+    # Notify admin
     try:
-        await bot.send_message(ADMIN_CHAT_ID, admin_msg)
+        await bot.send_message(ADMIN_ID,
+            f"💰 <b>ОПЛАТА!</b>\n"
+            f"👤 {user.full_name}{(' (@' + user.username + ')') if user.username else ''}\n"
+            f"🆔 {user.id}\n"
+            f"⭐ {stars} stars — план: {plan_key}\n"
+            f"📝 Помощник: {session.get('persona', 'рецепционист')[:200]}")
     except: pass
     
-    await message.answer(
-        f"✅ <b>Спасибо, {data['name']}!</b>\n\n"
-        f"Заявка принята. Свяжемся с вами через {data['contact']}.\n\n"
-        f"А пока — посмотрите тарифы или попробуйте демо!",
-        reply_markup=get_main_menu()
+    logger.info(f"Payment: {uid} paid {stars} stars for {plan_key}")
+
+
+@dp.callback_query(F.data == "pay_bank")
+async def on_pay_bank(callback: types.CallbackQuery):
+    bank_text = (
+        "💳 <b>Банковский перевод</b>\n\n"
+        "Реквизиты для оплаты:\n\n"
+        "🏦 <b>TBC Bank</b>\n"
+        "IBAN: <code>GE51TB7866536010100033</code>\n"
+        "Получатель: Timur Tokazov\n"
+        "Валюта: GEL (конвертация по курсу банка)\n\n"
+        "📌 В назначении укажите: AI Centers + ваш Telegram @username\n\n"
+        "После перевода отправьте скриншот квитанции @CARGORAPIDO для активации."
     )
-    await state.clear()
-
-
-# ─── Payment Processing ───
-
-@router.callback_query(F.data.startswith("buy_"))
-async def process_payment(callback: CallbackQuery, state: FSMContext):
-    plan_id = callback.data.replace("buy_", "")
-    plan = PLANS.get(plan_id)
-    if not plan:
-        await callback.answer("❌ Тариф не найден", show_alert=True)
-        return
-
-    await state.update_data(plan=plan_id)
-
-    features_text = "\n".join(plan['features'])
-    badge = f" {plan['badge']}" if "badge" in plan else ""
-    text = (
-        f"📦 <b>{plan['name']}</b>{badge}\n"
-        f"💵 {plan['creation_price']} разово + {plan['monthly_price']}\n\n"
-        f"{features_text}\n\n"
-        f"💫 Оплата: <b>{plan['stars_creation']} Telegram Stars</b>"
-    )
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=f"💫 Оплатить {plan['stars_creation']} Stars", callback_data=f"pay_stars_{plan_id}")],
-        [InlineKeyboardButton(text="◀️ Назад к тарифам", callback_data="pricing")]
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📞 Написать менеджеру", url="https://t.me/CARGORAPIDO")],
+        [InlineKeyboardButton(text="← Назад", callback_data="funnel_pricing")],
     ])
-    await callback.message.edit_text(text, reply_markup=keyboard)
+    await callback.message.answer(bank_text, reply_markup=kb)
+    await callback.answer()
+
+@dp.callback_query(F.data.startswith("pay_"))
+async def on_pay_callback(callback: types.CallbackQuery):
+    plan_key = callback.data.replace("pay_", "")
+    await send_stars_invoice(callback.message, plan_key)
     await callback.answer()
 
 
-@router.callback_query(F.data.startswith("pay_stars_"))
-async def send_stars_invoice(callback: CallbackQuery, state: FSMContext):
-    """Send Telegram Stars invoice after user clicked the pay button."""
-    plan_id = callback.data.replace("pay_stars_", "")
-    plan = PLANS.get(plan_id)
-    if not plan:
-        await callback.answer("❌ Тариф не найден", show_alert=True)
-        return
+async def show_funnel_step1(message: types.Message):
+    """Show sales funnel step 1: demo CTA + business qualification."""
+    logger.info(f"FUNNEL_STEP1 called for user {message.from_user.id}")
+    uid = message.from_user.id
+    session = get_session(uid)
+    lang = session.get("lang") or detect_lang(message.from_user)
+    session["lang"] = lang
+    session["funnel_shown"] = True
+    name = message.from_user.first_name or "друг"
 
-    prices = [LabeledPrice(label=f"Создание {plan['name']}", amount=plan['stars_creation'])]
-    desc = f"{plan['name']} — {plan['creation_price']} + {plan['monthly_price']}\n" + "\n".join(plan['features'])
+    # Message 1: Demo CTA
+    demo_texts = {
+        "ru": "🎯 <b>Попробуйте демо-ассистента!</b>\n\nВыберите нишу (ресторан, клиника, салон) и пообщайтесь как клиент.\nТакой же бот будет у вас — только настроенный под ваш бизнес!",
+        "en": "🎯 <b>Try the demo assistant!</b>\n\nChoose a niche (restaurant, clinic, salon) and chat as a customer.\nThe same bot will be yours — customized for your business!",
+        "ka": "🎯 <b>სცადეთ დემო ასისტენტი!</b>\n\nაირჩიეთ ნიშა (რესტორანი, კლინიკა, სალონი) და ესაუბრეთ როგორც კლიენტი.\nიგივე ბოტი იქნება თქვენი — თქვენს ბიზნესზე მორგებული!",
+        "tr": "🎯 <b>Demo asistanı deneyin!</b>\n\nBir niş seçin (restoran, klinik, salon) ve müşteri gibi sohbet edin.\nAynı bot sizin olacak — işletmenize özel!",
+        "kk": "🎯 <b>Демо-ассистентті байқап көріңіз!</b>\n\nНиша таңдаңыз және клиент ретінде сөйлесіңіз.",
+        "uz": "🎯 <b>Demo-assistentni sinab ko'ring!</b>\n\nNisha tanlang va mijoz sifatida suhbatlashing.",
+    }
+    demo_kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=t(lang, "btn_open_demo"), url="https://t.me/aicenters_demo_bot")],
+    ])
+    await message.answer(demo_texts.get(lang, demo_texts["en"]), reply_markup=demo_kb)
 
-    try:
-        await bot.send_invoice(
-            chat_id=callback.message.chat.id,
-            title=f"AI Centers — {plan['name']}",
-            description=desc,
-            payload=f"plan_{plan_id}",
-            provider_token="",
-            currency="XTR",
-            prices=prices
+    # Message 2: Business qualification
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=t(lang, "biz_restaurant"), callback_data="biz_restaurant"),
+         InlineKeyboardButton(text=t(lang, "biz_clinic"), callback_data="biz_clinic")],
+        [InlineKeyboardButton(text=t(lang, "biz_salon"), callback_data="biz_salon"),
+         InlineKeyboardButton(text=t(lang, "biz_shop"), callback_data="biz_shop")],
+        [InlineKeyboardButton(text=t(lang, "biz_services"), callback_data="biz_services"),
+         InlineKeyboardButton(text=t(lang, "biz_other"), callback_data="biz_other")],
+    ])
+    await message.answer(t(lang, "welcome", name=name), reply_markup=kb)
+    logger.info(f"Funnel step 1: {uid} lang={lang}")
+
+
+@dp.message(CommandStart())
+async def cmd_start(message: types.Message):
+    logger.info(f"CMD_START called for user {message.from_user.id}, payload: {message.text}")
+    uid = message.from_user.id
+    lang = detect_lang(message.from_user)
+    sessions[uid] = {"history": [], "count": 0, "mode": "receptionist", "persona": None, "lang": lang, "funnel_shown": False, "funnel_step": None}
+    
+    # Handle deep links: /start partner, /start buy_starter, etc.
+    args = message.text.split(maxsplit=1)[1] if len(message.text.split()) > 1 else ""
+    
+    if args == "partner":
+        # Partner program registration
+        partner_text = (
+            "🤝 <b>Партнёрская программа AI Centers</b>\n\n"
+            "Зарабатывайте <b>от 20% до 50%</b> с каждого клиента!\n\n"
+            "📈 <b>Как это работает:</b>\n"
+            "1. Вы рекомендуете AI Centers бизнесам\n"
+            "2. Мы создаём и настраиваем AI-бота\n"
+            "3. Вы получаете комиссию каждый месяц\n\n"
+            "💰 <b>Уровни комиссии:</b>\n"
+            "• 1-5 клиентов → <b>20%</b>\n"
+            "• 6-20 клиентов → <b>35%</b>\n"
+            "• 21+ клиентов → <b>50%</b>\n\n"
+            "0 вложений. 0 рисков. Рекуррентный доход.\n\n"
+            "Напишите ваше имя и город, чтобы зарегистрироваться как партнёр 👇"
         )
-        await callback.answer("✨ Счёт создан!")
-    except Exception as e:
-        logger.error(f"Invoice error: {e}")
-        await callback.answer("❌ Ошибка. Попробуйте позже.", show_alert=True)
-
-
-@router.pre_checkout_query()
-async def process_pre_checkout(pre_checkout_query: PreCheckoutQuery):
-    await bot.answer_pre_checkout_query(pre_checkout_query.id, ok=True)
-
-
-@router.message(F.successful_payment)
-async def process_successful_payment(message: Message, state: FSMContext):
-    payment = message.successful_payment
-    payload = payment.invoice_payload
-    stars_amount = payment.total_amount  # actual Stars paid
-
-    # Determine plan
-    if payload.startswith("url_plan_"):
-        plan_id = payload.replace("url_plan_", "")
-    else:
-        plan_id = payload.replace("plan_", "")
-
-    plan = PLANS.get(plan_id, PLANS["starter"])
-    data = await state.get_data()
-
-    # ── Save to SQLite ──
-    save_payment(
-        user_id=message.from_user.id,
-        username=message.from_user.username,
-        full_name=message.from_user.full_name,
-        plan=plan_id,
-        amount=stars_amount,
-        payload=payload
-    )
-
-    # Track partner referral if exists
-    ref_code = data.get("ref_code")
-    if ref_code:
-        await track_partner_referral(ref_code, message.from_user, plan_id, stars_amount)
-
-    # ── Notify Тимур (644024059) ──
-    ref_info = f"\n🤝 Реферал: {ref_code}" if ref_code else ""
-    timur_msg = (
-        f"💰 <b>Новая оплата Stars!</b>\n\n"
-        f"📦 {plan['name']} — {stars_amount} ⭐\n"
-        f"👤 {message.from_user.full_name}\n"
-        f"🆔 {message.from_user.id}"
-        f" @{message.from_user.username or '—'}{ref_info}\n"
-        f"📅 {datetime.now().strftime('%d.%m.%Y %H:%M')} UTC"
-    )
-    try:
-        await bot.send_message(TIMUR_CHAT_ID, timur_msg)
-    except Exception as e:
-        logger.error(f"Failed to notify Timur: {e}")
-
-    # Also notify main admin if different
-    if ADMIN_CHAT_ID != TIMUR_CHAT_ID:
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="📋 Подробнее на сайте", url="https://aicenters.co/partners")],
+            [InlineKeyboardButton(text="📞 Связаться с менеджером", url="https://t.me/CARGORAPIDO")],
+            [InlineKeyboardButton(text="← Назад в меню", callback_data="back_menu")],
+        ])
+        await message.answer(partner_text, reply_markup=kb)
+        sessions[uid]["mode"] = "partner_registration"
+        # Notify admin
         try:
-            await bot.send_message(ADMIN_CHAT_ID, timur_msg)
-        except: pass
-    
-    # URL-based setup — skip onboarding, go straight to bot token
-    if payload.startswith("url_plan_") and data.get("url"):
-        await message.answer(
-            f"🎉 <b>Оплата прошла! Тариф: {plan['name']}</b>\n\n"
-            f"Последний шаг — нужен Telegram-бот.\n\n"
-            f"1. Откройте @BotFather\n"
-            f"2. Отправьте /newbot\n"
-            f"3. Придумайте имя (например: <i>{data.get('site_title', 'MyBusiness')} Assistant</i>)\n"
-            f"4. Скопируйте токен и отправьте сюда\n\n"
-            f"Или нажмите «Пропустить» — мы создадим бота за вас.",
-            reply_markup=get_botfather_keyboard()
-        )
-        await state.update_data(plan=plan_id, flow="url")
-        await state.set_state(URLSetup.waiting_for_bot_token)
+            await bot.send_message(ADMIN_ID, f"🤝 Новый партнёр!\n@{message.from_user.username or '?'} ({message.from_user.full_name})\nID: {uid}")
+        except Exception:
+            pass
+        logger.info(f"Partner signup: {uid} ({message.from_user.full_name})")
         return
     
-    # Standard onboarding flow
-    await message.answer(
-        f"🎉 <b>Оплата прошла! Тариф: {plan['name']}</b>\n\n"
-        f"Сейчас соберём информацию для вашего AI-ассистента.\n\n"
-        f"<b>Название вашего бизнеса?</b>"
-    )
-    await state.update_data(plan=plan_id, flow="manual")
-    await state.set_state(Onboarding.waiting_for_business_name)
+    if args.startswith("buy_"):
+        plan = args.replace("buy_", "")
+        plan_names = {"starter": "Starter ($15/мес)", "pro": "Pro ($29/мес)", "business": "Business ($59/мес)", "enterprise": "Enterprise ($149/мес)"}
+        plan_stars = {"starter": 250, "pro": 500, "business": 1000, "enterprise": 2500}
+        if plan in plan_names:
+            kb = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text=f"⭐ Оплатить {plan_stars[plan]} Stars", callback_data=f"pay_{plan}")],
+                [InlineKeyboardButton(text="💳 Банковский перевод", callback_data="pay_bank")],
+            ])
+            await message.answer(
+                f"🤖 <b>Тариф {plan_names[plan]}</b>\n\n"
+                f"Выберите способ оплаты:",
+                reply_markup=kb
+            )
+            logger.info(f"Buy {plan}: {uid}")
+            return
 
-
-# ─── URL Setup: Bot Token ───
-
-@router.message(StateFilter(URLSetup.waiting_for_bot_token))
-async def url_bot_token_received(message: Message, state: FSMContext):
-    """Client sent bot token for URL setup."""
-    token = message.text.strip()
-    
-    # Validate token format
-    if not re.match(r'^\d+:[A-Za-z0-9_-]{30,50}$', token):
-        await message.answer(
-            "❌ Это не похоже на токен бота.\n\n"
-            "Токен выглядит так: <code>123456789:ABCdefGHIjklMNOpqrsTUVwxyz</code>\n\n"
-            "Получите его у @BotFather → /newbot",
-            reply_markup=get_botfather_keyboard()
-        )
+    if args == "computer_use_pilot":
+        session = get_session(uid)
+        session["mode"] = "cu_pilot"
+        session["cu_pilot_step"] = 1
+        session["cu_pilot_data"] = {}
+        session["funnel_shown"] = True
+        pilot_texts = {
+            "ru": ("🚀 <b>Бесплатный пилот AI Computer Use</b>\n\n"
+                   "Отлично! Запускаем бесплатный пилот.\n"
+                   "Ответьте на 3 вопроса:\n\n"
+                   "<b>1/3. Какую систему используете?</b>"),
+            "en": ("🚀 <b>Free AI Computer Use Pilot</b>\n\n"
+                   "Great! Let's start a free pilot.\n"
+                   "Answer 3 questions:\n\n"
+                   "<b>1/3. What system do you use?</b>"),
+        }
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="AmoCRM", callback_data="cu_sys_amocrm"),
+             InlineKeyboardButton(text="Bitrix24", callback_data="cu_sys_bitrix")],
+            [InlineKeyboardButton(text="1C", callback_data="cu_sys_1c"),
+             InlineKeyboardButton(text="Google Sheets", callback_data="cu_sys_gsheets")],
+            [InlineKeyboardButton(text="Другое / Other", callback_data="cu_sys_other")],
+        ])
+        await message.answer(pilot_texts.get(lang, pilot_texts["en"]), reply_markup=kb)
+        logger.info(f"CU Pilot start: {uid}")
         return
-    
-    data = await state.get_data()
-    url = data.get("url", "")
-    plan_id = data.get("plan", "starter")
-    
-    await message.answer("⏳ <b>Создаю AI-ассистента из вашего сайта...</b>\n\nЭто займёт 1-2 минуты.")
-    await bot.send_chat_action(message.chat.id, "typing")
-    
-    # Call Platform API auto-setup
-    success = await create_bot_from_url(message, token, url, data.get("site_title", ""), plan_id)
-    
-    if not success:
-        # Fallback: notify admin for manual creation
-        await message.answer(
-            "⚠️ Автоматическое создание не удалось.\n\n"
-            "Наш специалист создаст бота в течение <b>2 часов</b>.\n"
-            "Вы получите ссылку прямо сюда.",
-            reply_markup=get_main_menu()
-        )
-        await bot.send_message(ADMIN_CHAT_ID,
-            f"⚠️ <b>Auto-setup FAILED — вручную!</b>\n\n"
-            f"👤 {message.from_user.full_name} ({message.from_user.id})\n"
-            f"🌐 {url}\n📦 {plan_id}\n🔑 Токен получен")
-    
-    await state.clear()
+
+    if args == "computer_use_demo":
+        session = get_session(uid)
+        session["mode"] = "cu_demo"
+        session["funnel_shown"] = True
+        demo_texts = {
+            "ru": ("📅 <b>Демо AI Computer Use</b>\n\n"
+                   "Запланируем демо в вашей системе за 30 минут.\n\n"
+                   "<b>Когда вам удобно?</b>\n"
+                   "Напишите день и время 👇"),
+            "en": ("📅 <b>AI Computer Use Demo</b>\n\n"
+                   "Let's schedule a 30-minute demo in your system.\n\n"
+                   "<b>When works for you?</b>\n"
+                   "Write a day and time 👇"),
+        }
+        await message.answer(demo_texts.get(lang, demo_texts["en"]))
+        logger.info(f"CU Demo start: {uid}")
+        return
+
+    # ── Sales funnel: Step 1 ──
+    await show_funnel_step1(message)
 
 
-@router.callback_query(F.data == "skip_bot_token")
-async def skip_bot_token(callback: CallbackQuery, state: FSMContext):
-    """Client doesn't want to create bot themselves."""
-    data = await state.get_data()
-    
+# ─── Sales Funnel Callbacks ───
+
+# Niche names and cases are now in i18n.py
+
+
+# Step 2 — Pain point
+@dp.callback_query(F.data.startswith("biz_"))
+async def on_biz_select(callback: types.CallbackQuery):
+    uid = callback.from_user.id
+    session = get_session(uid)
+    session["niche"] = callback.data
+    lang = session.get("lang", detect_lang(callback.from_user))
+
+    niche_name = t(lang, callback.data)
+
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=t(lang, "leads_10"), callback_data="leads_10")],
+        [InlineKeyboardButton(text=t(lang, "leads_50"), callback_data="leads_50")],
+        [InlineKeyboardButton(text=t(lang, "leads_100"), callback_data="leads_100")],
+        [InlineKeyboardButton(text=t(lang, "leads_unknown"), callback_data="leads_unknown")],
+    ])
+
     await callback.message.edit_text(
-        "✅ <b>Принято!</b>\n\n"
-        "Наш специалист создаст Telegram-бота и настроит AI-ассистента "
-        "на основе вашего сайта в течение <b>2 часов</b>.\n\n"
-        "Вы получите ссылку на готового бота прямо сюда.",
-        reply_markup=get_main_menu()
+        t(lang, "leads_question", niche=niche_name),
+        reply_markup=kb,
     )
-    
-    await bot.send_message(ADMIN_CHAT_ID,
-        f"🔧 <b>Нужно создать бота вручную</b>\n\n"
-        f"👤 {callback.from_user.full_name} ({callback.from_user.id})\n"
-        f"🌐 {data.get('url', '—')}\n"
-        f"📦 {data.get('plan', 'starter')}\n"
-        f"💰 Оплачено Stars\n"
-        f"⚠️ Клиент не создал бота в BotFather")
-    
-    await state.clear()
     await callback.answer()
 
 
-async def create_bot_from_url(message: Message, bot_token: str, url: str, site_title: str, plan_id: str) -> bool:
-    """Create bot via Platform API auto-setup endpoint."""
+# Step 3 — Case presentation
+NICHE_TO_CASE = {
+    "biz_restaurant": "case_restaurant", "biz_clinic": "case_clinic",
+    "biz_salon": "case_salon", "biz_shop": "case_shop",
+    "biz_services": "case_services", "biz_other": "case_other",
+}
+
+@dp.callback_query(F.data.startswith("leads_"))
+async def on_leads_select(callback: types.CallbackQuery):
+    uid = callback.from_user.id
+    session = get_session(uid)
+    niche = session.get("niche", "biz_other")
+    leads = callback.data
+    lang = session.get("lang", detect_lang(callback.from_user))
+
+    # Get savings in user language
+    savings_dict = I18N.get("savings", {}).get(leads, I18N["savings"]["leads_unknown"])
+    save_text = savings_dict.get(lang, savings_dict.get("en", savings_dict.get("ru", "")))
+
+    case_key = NICHE_TO_CASE.get(niche, "case_other")
+    case = t(lang, case_key)
+
+    await callback.message.edit_text(case)
+
+    # Step 4 — Offer
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=t(lang, "btn_try_free"), callback_data="funnel_demo")],
+        [InlineKeyboardButton(text=t(lang, "btn_pricing"), callback_data="funnel_pricing")],
+        [InlineKeyboardButton(text=t(lang, "btn_question"), callback_data="funnel_question")],
+    ])
+
+    await callback.message.answer(
+        t(lang, "offer", savings=save_text),
+        reply_markup=kb,
+    )
+    await callback.answer()
+
+
+# Step 5a — Free trial → demo bot
+@dp.callback_query(F.data == "funnel_demo")
+async def on_funnel_demo(callback: types.CallbackQuery):
+    uid = callback.from_user.id
+    session = get_session(uid)
+    lang = session.get("lang", detect_lang(callback.from_user))
+    niche = session.get("niche", "biz_other")
+
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=t(lang, "btn_open_demo"), url="https://t.me/aicenters_demo_bot")],
+        [InlineKeyboardButton(text=t(lang, "btn_create_site"), callback_data="create")],
+        [InlineKeyboardButton(text=t(lang, "btn_go_pricing"), callback_data="funnel_pricing")],
+    ])
+
+    await callback.message.edit_text(
+        t(lang, "demo_intro"),
+        reply_markup=kb,
+    )
+    await callback.answer()
+
     try:
-        async with aiohttp.ClientSession() as session:
-            # First authenticate to get JWT
-            auth_resp = await session.post(
-                f"{PLATFORM_API_URL}/auth/telegram",
-                json={
-                    "id": message.from_user.id,
-                    "first_name": message.from_user.first_name or "",
-                    "last_name": message.from_user.last_name or "",
-                    "username": message.from_user.username or "",
-                    "photo_url": "",
-                    "auth_date": int(datetime.now().timestamp()),
-                    "hash": "sales_bot_internal"
-                },
-                timeout=aiohttp.ClientTimeout(total=10)
-            )
-            
-            if auth_resp.status != 200:
-                logger.error(f"Auth failed: {auth_resp.status}")
-                return False
-            
-            auth_data = await auth_resp.json()
-            jwt_token = auth_data.get("access_token", "")
-            
-            # Call auto-setup
-            setup_resp = await session.post(
-                f"{PLATFORM_API_URL}/bots/auto-setup",
-                json={
-                    "bot_token": bot_token,
-                    "url": url,
-                    "language": "ru"
-                },
-                headers={"Authorization": f"Bearer {jwt_token}"},
-                timeout=aiohttp.ClientTimeout(total=120)
-            )
-            
-            if setup_resp.status == 201:
-                result = await setup_resp.json()
-                bot_username = result.get("bot_username", "")
-                
-                await message.answer(
-                    f"🎉 <b>AI-ассистент готов!</b>\n\n"
-                    f"🏢 {site_title}\n"
-                    f"🤖 Бот: @{bot_username}\n"
-                    f"🔗 https://t.me/{bot_username}\n\n"
-                    f"<b>Что дальше:</b>\n"
-                    f"1. Откройте бота и протестируйте\n"
-                    f"2. Отправьте ссылку клиентам\n"
-                    f"3. Добавьте на сайт (виджет)\n\n"
-                    f"Нужны правки? Пишите — доработаем!",
-                    reply_markup=get_main_menu()
-                )
-                
-                await bot.send_message(ADMIN_CHAT_ID,
-                    f"🤖 <b>Бот создан автоматически!</b>\n\n"
-                    f"👤 {message.from_user.full_name}\n"
-                    f"🌐 {url}\n"
-                    f"🤖 @{bot_username}\n"
-                    f"📦 {plan_id}")
-                return True
-            else:
-                error = await setup_resp.text()
-                logger.error(f"Auto-setup API error {setup_resp.status}: {error}")
-                return False
-                
-    except Exception as e:
-        logger.error(f"create_bot_from_url failed: {e}")
-        return False
+        niche_name = t(lang, niche)
+        await bot.send_message(ADMIN_ID,
+            f"🔥 Лид (демо)!\n{callback.from_user.full_name} (@{callback.from_user.username or '?'})\n"
+            f"Ниша: {niche_name}\nLang: {lang}\nID: {uid}")
+    except: pass
 
 
-# ─── Standard Onboarding (after payment, no URL) ───
+# Step 5b — Pricing (Starter as main option)
+PRICING_DETAILS = {
+    "ru": (
+        "⭐ <b>Starter — $149 + $19/мес</b> ← 90% клиентов начинают здесь\n"
+        "• 1 AI-сотрудник\n• Telegram + WhatsApp + сайт\n• Обучение на ваших данных\n• Настройка за 5 минут\n\n"
+        "🚀 <b>Pro — $299 + $49/мес</b>\n• 3 AI-сотрудника\n• CRM интеграция\n• Приоритетная поддержка\n\n"
+        "🏢 <b>Business — $499 + $79/мес</b>\n• 10 AI-сотрудников\n• API + webhook\n• Персональный менеджер"
+    ),
+    "en": (
+        "⭐ <b>Starter — $149 + $19/mo</b> ← 90% of clients start here\n"
+        "• 1 AI employee\n• Telegram + WhatsApp + website\n• Trained on your data\n• Setup in 5 minutes\n\n"
+        "🚀 <b>Pro — $299 + $49/mo</b>\n• 3 AI employees\n• CRM integration\n• Priority support\n\n"
+        "🏢 <b>Business — $499 + $79/mo</b>\n• 10 AI employees\n• API + webhook\n• Personal manager"
+    ),
+    "ka": (
+        "⭐ <b>Starter — $149 + $19/თვე</b> ← კლიენტების 90% აქედან იწყებს\n"
+        "• 1 AI თანამშრომელი\n• Telegram + WhatsApp + საიტი\n• თქვენს მონაცემებზე სწავლება\n• დაყენება 5 წუთში\n\n"
+        "🚀 <b>Pro — $299 + $49/თვე</b>\n• 3 AI თანამშრომელი\n• CRM ინტეგრაცია\n• პრიორიტეტული მხარდაჭერა\n\n"
+        "🏢 <b>Business — $499 + $79/თვე</b>\n• 10 AI თანამშრომელი\n• API + webhook\n• პერსონალური მენეჯერი"
+    ),
+    "tr": (
+        "⭐ <b>Starter — $149 + $19/ay</b> ← Müşterilerin %90'ı buradan başlıyor\n"
+        "• 1 AI çalışan\n• Telegram + WhatsApp + web sitesi\n• Verilerinizle eğitim\n• 5 dakikada kurulum\n\n"
+        "🚀 <b>Pro — $299 + $49/ay</b>\n• 3 AI çalışan\n• CRM entegrasyonu\n• Öncelikli destek\n\n"
+        "🏢 <b>Business — $499 + $79/ay</b>\n• 10 AI çalışan\n• API + webhook\n• Kişisel yönetici"
+    ),
+    "kk": (
+        "⭐ <b>Starter — $149 + $19/ай</b> ← 90% клиенттер осыдан бастайды\n"
+        "• 1 AI қызметкер\n• Telegram + WhatsApp + сайт\n• Деректеріңізде оқыту\n• 5 минутта баптау\n\n"
+        "🚀 <b>Pro — $299 + $49/ай</b>\n• 3 AI қызметкер\n• CRM интеграция\n\n"
+        "🏢 <b>Business — $499 + $79/ай</b>\n• 10 AI қызметкер\n• API + webhook"
+    ),
+    "uz": (
+        "⭐ <b>Starter — $149 + $19/oy</b> ← Mijozlarning 90% shu yerdan boshlaydi\n"
+        "• 1 AI xodim\n• Telegram + WhatsApp + sayt\n• Ma'lumotlaringizda o'qitish\n• 5 daqiqada sozlash\n\n"
+        "🚀 <b>Pro — $299 + $49/oy</b>\n• 3 AI xodim\n• CRM integratsiya\n\n"
+        "🏢 <b>Business — $499 + $79/oy</b>\n• 10 AI xodim\n• API + webhook"
+    ),
+}
 
-@router.message(StateFilter(Onboarding.waiting_for_business_name))
-async def onboarding_business(message: Message, state: FSMContext):
-    await state.update_data(business_name=message.text)
-    await message.answer("<b>В какой нише?</b>", reply_markup=get_niche_keyboard())
-    await state.set_state(Onboarding.waiting_for_niche)
+@dp.callback_query(F.data == "funnel_pricing")
+async def on_funnel_pricing(callback: types.CallbackQuery):
+    uid = callback.from_user.id
+    session = get_session(uid)
+    lang = session.get("lang", detect_lang(callback.from_user))
 
-@router.callback_query(StateFilter(Onboarding.waiting_for_niche), F.data.startswith("niche_"))
-async def onboarding_niche(callback: CallbackQuery, state: FSMContext):
-    niche_code = callback.data.replace("niche_", "")
-    niche_name = next((name for code, name in NICHES if code == niche_code), "Неизвестно")
-    await state.update_data(niche=niche_name)
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=t(lang, "pricing_starter_label"), callback_data="funnel_buy_starter")],
+        [InlineKeyboardButton(text="🚀 Pro — $299 + $49/mo", callback_data="funnel_buy_pro")],
+        [InlineKeyboardButton(text="🏢 Business — $499 + $79/mo", callback_data="funnel_buy_business")],
+        [InlineKeyboardButton(text=t(lang, "btn_try_free_short"), callback_data="funnel_demo")],
+        [InlineKeyboardButton(text=t(lang, "btn_help_choose"), callback_data="funnel_question")],
+    ])
+
+    details = PRICING_DETAILS.get(lang, PRICING_DETAILS["en"])
     await callback.message.edit_text(
-        "<b>Расскажите о бизнесе:</b>\n\n"
-        "• Что предлагаете\n• Основные услуги\n• Что важно знать клиентам"
+        f"{t(lang, 'pricing_title')}\n\n{details}\n\n{t(lang, 'pricing_footer')}",
+        reply_markup=kb,
     )
-    await state.set_state(Onboarding.waiting_for_description)
     await callback.answer()
 
-@router.message(StateFilter(Onboarding.waiting_for_description))
-async def onboarding_description(message: Message, state: FSMContext):
-    await state.update_data(description=message.text)
-    await message.answer("📞 <b>Контактный телефон:</b>\n\nНапример: +995 555 123456")
-    await state.set_state(Onboarding.waiting_for_phone)
 
-@router.message(StateFilter(Onboarding.waiting_for_phone))
-async def onboarding_phone(message: Message, state: FSMContext):
-    await state.update_data(phone=message.text)
-    await message.answer("📍 <b>Адрес:</b>\n\nЕсли онлайн — напишите «онлайн»")
-    await state.set_state(Onboarding.waiting_for_address)
+# Funnel buy → checkout
+@dp.callback_query(F.data.startswith("funnel_buy_"))
+async def on_funnel_buy(callback: types.CallbackQuery):
+    uid = callback.from_user.id
+    session = get_session(uid)
+    lang = session.get("lang", detect_lang(callback.from_user))
+    plan = callback.data.replace("funnel_buy_", "")
+    plan_data = {
+        "starter": {"name": "Starter", "setup": "$149", "monthly": "$19/mo", "stars": 250},
+        "pro": {"name": "Pro", "setup": "$299", "monthly": "$49/mo", "stars": 500},
+        "business": {"name": "Business", "setup": "$499", "monthly": "$79/mo", "stars": 1000},
+    }
+    p = plan_data.get(plan, plan_data["starter"])
 
-@router.message(StateFilter(Onboarding.waiting_for_address))
-async def onboarding_address(message: Message, state: FSMContext):
-    await state.update_data(address=message.text)
-    await message.answer("🕐 <b>Режим работы:</b>\n\nНапример: Пн-Пт 9:00-18:00")
-    await state.set_state(Onboarding.waiting_for_schedule)
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=t(lang, "btn_pay_stars", stars=p["stars"]), callback_data=f"pay_{plan}")],
+        [InlineKeyboardButton(text=t(lang, "btn_crypto"), url=f"https://aicenters.co/checkout?plan={plan}&lang={lang}")],
+        [InlineKeyboardButton(text=t(lang, "btn_bank"), callback_data="pay_bank")],
+        [InlineKeyboardButton(text=t(lang, "btn_back_pricing"), callback_data="funnel_pricing")],
+    ])
 
-@router.message(StateFilter(Onboarding.waiting_for_schedule))
-async def onboarding_schedule(message: Message, state: FSMContext):
-    await state.update_data(schedule=message.text)
-    await message.answer(
-        "📋 <b>Основные услуги/товары с ценами:</b>\n\n"
-        "По одной на строку:\n"
-        "<i>Стрижка мужская — 30 лари\nМаникюр — 40 лари</i>"
+    await callback.message.edit_text(
+        t(lang, "payment_choose", plan=p["name"], setup=p["setup"], monthly=p["monthly"]),
+        reply_markup=kb,
     )
-    await state.set_state(Onboarding.waiting_for_services)
+    await callback.answer()
 
-@router.message(StateFilter(Onboarding.waiting_for_services))
-async def onboarding_services(message: Message, state: FSMContext):
-    await state.update_data(services_raw=message.text)
-    
-    await message.answer(
-        "🤖 <b>Последний шаг — Telegram-бот</b>\n\n"
-        "1. Откройте @BotFather\n"
-        "2. Отправьте /newbot\n"
-        "3. Придумайте имя\n"
-        "4. Скопируйте токен и отправьте сюда\n\n"
-        "Или нажмите «Пропустить».",
-        reply_markup=get_botfather_keyboard()
-    )
-    await state.set_state(Onboarding.waiting_for_bot_token)
-
-
-@router.message(StateFilter(Onboarding.waiting_for_bot_token))
-async def onboarding_bot_token(message: Message, state: FSMContext):
-    """Client sent bot token for manual onboarding."""
-    token = message.text.strip()
-    
-    if not re.match(r'^\d+:[A-Za-z0-9_-]{30,50}$', token):
-        await message.answer(
-            "❌ Неверный формат токена.\n\n"
-            "Токен: <code>123456789:ABCdefGHIjklMNOpqrsTUVwxyz</code>\n\n"
-            "Получите у @BotFather → /newbot",
-            reply_markup=get_botfather_keyboard()
-        )
-        return
-    
-    data = await state.get_data()
-    plan_id = data.get("plan", "starter")
-    
-    await message.answer("⏳ <b>Создаю AI-ассистента...</b>\n\nЭто займёт 1-2 минуты.")
-    await bot.send_chat_action(message.chat.id, "typing")
-    
-    # Build business text
-    business_text = f"""
-Бизнес: {data.get('business_name', '')}
-Ниша: {data.get('niche', '')}
-Описание: {data.get('description', '')}
-Телефон: {data.get('phone', '')}
-Адрес: {data.get('address', '')}
-График: {data.get('schedule', '')}
-Услуги:
-{data.get('services_raw', '')}
-"""
-    
     try:
-        async with aiohttp.ClientSession() as session:
-            # Auth
-            auth_resp = await session.post(
-                f"{PLATFORM_API_URL}/auth/telegram",
-                json={
-                    "id": message.from_user.id,
-                    "first_name": message.from_user.first_name or "",
-                    "last_name": message.from_user.last_name or "",
-                    "username": message.from_user.username or "",
-                    "photo_url": "",
-                    "auth_date": int(datetime.now().timestamp()),
-                    "hash": "sales_bot_internal"
-                },
-                timeout=aiohttp.ClientTimeout(total=10)
-            )
-            auth_data = await auth_resp.json()
-            jwt_token = auth_data.get("access_token", "")
-            
-            # Auto-setup from text
-            setup_resp = await session.post(
-                f"{PLATFORM_API_URL}/bots/auto-setup",
-                json={
-                    "bot_token": token,
-                    "text": business_text,
-                    "business_type": data.get("niche", ""),
-                    "language": "ru"
-                },
-                headers={"Authorization": f"Bearer {jwt_token}"},
-                timeout=aiohttp.ClientTimeout(total=120)
-            )
-            
-            if setup_resp.status == 201:
-                result = await setup_resp.json()
-                bot_username = result.get("bot_username", "")
-                
-                await message.answer(
-                    f"🎉 <b>AI-ассистент готов!</b>\n\n"
-                    f"🏢 {data.get('business_name', '')}\n"
-                    f"🤖 Бот: @{bot_username}\n"
-                    f"🔗 https://t.me/{bot_username}\n\n"
-                    f"<b>Что дальше:</b>\n"
-                    f"1. Откройте бота и протестируйте\n"
-                    f"2. Отправьте ссылку клиентам\n"
-                    f"3. Добавьте на сайт\n\n"
-                    f"Нужны правки? Пишите!",
-                    reply_markup=get_main_menu()
-                )
-                
-                await bot.send_message(ADMIN_CHAT_ID,
-                    f"🤖 <b>Бот создан!</b>\n\n"
-                    f"👤 {message.from_user.full_name}\n"
-                    f"🏢 {data.get('business_name', '')}\n"
-                    f"🤖 @{bot_username}\n📦 {plan_id}")
-                
-                await state.clear()
-                return
-            else:
-                raise Exception(f"API {setup_resp.status}: {await setup_resp.text()}")
-                
-    except Exception as e:
-        logger.error(f"Manual onboarding auto-setup failed: {e}")
-    
-    # Fallback
-    services = []
-    for line in (data.get('services_raw', '') or '').strip().split('\n'):
-        line = line.strip()
-        if line:
-            sep = '—' if '—' in line else '-' if '-' in line else None
-            if sep:
-                parts = line.split(sep, 1)
-                services.append({'name': parts[0].strip(), 'price': parts[1].strip() if len(parts) > 1 else ''})
-            else:
-                services.append({'name': line, 'price': ''})
-    
-    services_summary = '\n'.join([f"  • {s['name']}: {s['price']}" for s in services]) or 'Не указаны'
-    
-    await bot.send_message(ADMIN_CHAT_ID,
-        f"⚠️ <b>Auto-setup FAILED — вручную!</b>\n\n"
-        f"👤 {message.from_user.full_name} ({message.from_user.id})\n"
-        f"🏢 {data.get('business_name', '')}\n"
-        f"🎯 {data.get('niche', '')}\n"
-        f"📝 {data.get('description', '')}\n"
-        f"📞 {data.get('phone', '')}\n📍 {data.get('address', '')}\n"
-        f"🕐 {data.get('schedule', '')}\n📋 Услуги:\n{services_summary}\n"
-        f"📦 {plan_id}\n🔑 Токен: есть")
-    
-    await message.answer(
-        f"✅ <b>Данные собраны!</b>\n\n"
-        f"🏢 {data.get('business_name', '')}\n\n"
-        f"Наш специалист создаст AI-ассистента в течение <b>2 часов</b>.\n"
-        f"Ссылка на бота придёт сюда.",
-        reply_markup=get_main_menu()
-    )
-    await state.clear()
+        await bot.send_message(ADMIN_ID,
+            f"💰 Лид (оплата)!\n{callback.from_user.full_name} (@{callback.from_user.username or '?'})\n"
+            f"План: {p['name']}\nLang: {lang}\nID: {uid}")
+    except: pass
 
 
-@router.callback_query(StateFilter(Onboarding.waiting_for_bot_token), F.data == "skip_bot_token")
-async def onboarding_skip_token(callback: CallbackQuery, state: FSMContext):
-    data = await state.get_data()
-    
-    services_summary = data.get('services_raw', 'Не указаны')
-    
-    await bot.send_message(ADMIN_CHAT_ID,
-        f"🔧 <b>Создать бота вручную</b>\n\n"
-        f"👤 {callback.from_user.full_name} ({callback.from_user.id})\n"
-        f"🏢 {data.get('business_name', '')}\n"
-        f"🎯 {data.get('niche', '')}\n"
-        f"📝 {data.get('description', '')}\n"
-        f"📞 {data.get('phone', '')}\n📍 {data.get('address', '')}\n"
-        f"🕐 {data.get('schedule', '')}\n📋 {services_summary}\n"
-        f"📦 {data.get('plan', 'starter')}\n"
-        f"⚠️ Клиент не создал бота")
-    
-    await callback.message.edit_text(
-        "✅ <b>Принято!</b>\n\n"
-        "Создадим бота и настроим AI-ассистента в течение <b>2 часов</b>.\n"
-        "Ссылка придёт сюда.",
-        reply_markup=get_main_menu()
-    )
-    await state.clear()
+# Step 5c — Question → Gemini handles objections, then returns to offer
+@dp.callback_query(F.data == "funnel_question")
+async def on_funnel_question(callback: types.CallbackQuery):
+    uid = callback.from_user.id
+    session = get_session(uid)
+    session["mode"] = "objection_handler"
+    lang = session.get("lang", detect_lang(callback.from_user))
+
+    await callback.message.edit_text(t(lang, "ask_question"))
     await callback.answer()
 
 
-# ─── AI Chat (free text → Gemini) ───
-@router.message()
-async def ai_chat(message: Message, state: FSMContext):
-    """Handle free text — check if URL, otherwise AI chat."""
+@dp.message(Command("reset"))
+async def cmd_reset(message: types.Message):
+    uid = message.from_user.id
+    sessions[uid] = {"history": [], "count": 0, "mode": "receptionist", "persona": None}
+    await message.answer("🔄 Начнём с чистого листа! Чем могу помочь?")
+
+
+@dp.message(Command("menu"))
+async def cmd_menu(message: types.Message):
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✨ Создать AI-помощника", callback_data="create")],
+        [InlineKeyboardButton(text="🖥 Computer Use (CRM, 1C, таблицы)", callback_data="computer_use")],
+        [InlineKeyboardButton(text="🤖 Каталог агентов", web_app=WebAppInfo(url="https://aicenters.co/miniapp.html"))],
+        [InlineKeyboardButton(text="🗣️ Голосовой AI-секретарь", callback_data="voice_ai")],
+        [InlineKeyboardButton(text="⭐ Тарифы и оплата", callback_data="pricing")],
+        [InlineKeyboardButton(text="🤝 Партнёрская программа", url="https://t.me/aicenters_hub_bot?start=partner")],
+        [InlineKeyboardButton(text="🌐 Сайт", url="https://aicenters.co")],
+    ])
+    await message.answer("Вот что у нас есть:", reply_markup=kb)
+
+
+@dp.callback_query(F.data == "create")
+async def on_create(callback: types.CallbackQuery):
+    uid = callback.from_user.id
+    session = get_session(uid)
+    session["mode"] = "receptionist"
+    
+    response = gemini_chat(SYSTEM_PROMPT, session["history"], "Я хочу создать своего AI-помощника")
+    session["history"].append({"user": "Хочу создать AI-помощника", "bot": response})
+    
+    await callback.message.answer(response)
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "computer_use")
+async def on_computer_use(callback: types.CallbackQuery):
+    uid = callback.from_user.id
+    session = get_session(uid)
+
+    text = (
+        "🖥 <b>AI Computer Use</b>\n\n"
+        "AI-сотрудник, который сам работает в ваших программах:\n\n"
+        "• <b>AmoCRM / Bitrix24</b> — заполняет карточки, двигает сделки, ставит задачи\n"
+        "• <b>1C</b> — создаёт накладные, обновляет остатки\n"
+        "• <b>Google Таблицы</b> — собирает данные, строит отчёты\n"
+        "• <b>Маркетплейсы</b> — мониторит заказы, отвечает покупателям\n\n"
+        "⚡ Работает без API — видит экран как человек\n"
+        "⏱ Пилот за 3 дня | 24/7 | от $39/мес\n\n"
+        "Настройка процесса: от $299 (разово)"
+    )
+
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📋 Подробнее на сайте", url="https://aicenters.co/computer-use")],
+        [InlineKeyboardButton(text="🎯 Запланировать демо", callback_data="computer_use_demo")],
+        [InlineKeyboardButton(text="💰 Тарифы Computer Use", url="https://aicenters.co/computer-use#pricing")],
+        [InlineKeyboardButton(text="← Меню", callback_data="back_menu")],
+    ])
+
+    await callback.message.answer(text, parse_mode="HTML", reply_markup=kb)
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "computer_use_demo")
+async def on_computer_use_demo(callback: types.CallbackQuery):
+    uid = callback.from_user.id
+    session = get_session(uid)
+
+    response = gemini_chat(SYSTEM_PROMPT, session["history"],
+        "[Система: клиент нажал 'Запланировать демо Computer Use'. "
+        "Спроси: 1) В какой системе работает (AmoCRM, Bitrix, 1C, Google Sheets, другое)? "
+        "2) Какой процесс хочет автоматизировать? "
+        "3) Удобное время для демо (30 мин, онлайн). "
+        "Будь коротким и конкретным.]")
+    session["history"].append({"user": "Хочу демо Computer Use", "bot": response})
+
+    await callback.message.answer(response)
+    await callback.answer()
+
+
+# ─── Computer Use Pilot Callbacks ───
+
+@dp.callback_query(F.data.startswith("cu_sys_"))
+async def on_cu_system(callback: types.CallbackQuery):
+    uid = callback.from_user.id
+    session = get_session(uid)
+    lang = session.get("lang", "ru")
+    system_map = {"cu_sys_amocrm": "AmoCRM", "cu_sys_bitrix": "Bitrix24", "cu_sys_1c": "1C", "cu_sys_gsheets": "Google Sheets", "cu_sys_other": "Другое"}
+    system = system_map.get(callback.data, callback.data)
+
+    if not session.get("cu_pilot_data"):
+        session["cu_pilot_data"] = {}
+    session["cu_pilot_data"]["system"] = system
+    session["cu_pilot_step"] = 2
+
+    q2 = {
+        "ru": "<b>2/3. Какой процесс хотите автоматизировать?</b>\n\nНапример: выставление счетов, перенос данных, рассылка...",
+        "en": "<b>2/3. What process do you want to automate?</b>\n\nFor example: invoicing, data migration, mailing...",
+    }
+    await callback.message.answer(q2.get(lang, q2["en"]))
+    await callback.answer()
+
+
+# ─── Computer Use text handler (pilot steps 2-3 + demo) ───
+
+async def handle_cu_text(message: types.Message, session: dict) -> bool:
+    """Handle CU pilot/demo text. Returns True if handled."""
+    uid = message.from_user.id
+    lang = session.get("lang", "ru")
     text = message.text or ""
-    
-    # If it looks like a URL, start URL flow
-    if is_url(text):
-        await state.set_state(URLSetup.waiting_for_url_confirm)
-        # Reuse the URL handler
-        await url_setup_received(message, state)
-        return
-    
-    # AI chat via Gemini
-    try:
-        await bot.send_chat_action(message.chat.id, "typing")
-        chat = gemini_model.start_chat(history=[])
-        response = await asyncio.to_thread(
-            chat.send_message,
-            f"{SALES_PROMPT}\n\nКлиент: {text}"
-        )
-        await message.answer(response.text, reply_markup=get_main_menu())
-    except Exception as e:
-        logger.error(f"Gemini error: {e}")
-        await message.answer(
-            "Произошла ошибка. Выберите действие из меню:",
-            reply_markup=get_main_menu()
-        )
+    mode = session.get("mode")
+
+    if mode == "cu_pilot" and session.get("cu_pilot_step") == 2:
+        session.setdefault("cu_pilot_data", {})["process"] = text
+        session["cu_pilot_step"] = 3
+        q3 = {
+            "ru": "<b>3/3. Ваш контакт для связи?</b>\n\nТелефон или Telegram 👇",
+            "en": "<b>3/3. Your contact info?</b>\n\nPhone or Telegram 👇",
+        }
+        await message.answer(q3.get(lang, q3["en"]))
+        return True
+
+    if mode == "cu_pilot" and session.get("cu_pilot_step") == 3:
+        session.setdefault("cu_pilot_data", {})["contact"] = text
+        data = session["cu_pilot_data"]
+        # Notify admin
+        try:
+            await bot.send_message(ADMIN_ID,
+                f"🚀 <b>Новый пилот Computer Use!</b>\n\n"
+                f"👤 {message.from_user.full_name} (@{message.from_user.username or '?'})\n"
+                f"🖥 Система: {data.get('system', '?')}\n"
+                f"⚙️ Процесс: {data.get('process', '?')}\n"
+                f"📞 Контакт: {data.get('contact', '?')}")
+        except Exception:
+            pass
+        done = {
+            "ru": "✅ <b>Заявка принята!</b>\n\nМы свяжемся с вами в течение 2 часов для запуска пилота.\n\nА пока можете посмотреть, как это работает:",
+            "en": "✅ <b>Application received!</b>\n\nWe'll contact you within 2 hours to start the pilot.\n\nMeanwhile, see how it works:",
+        }
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🌐 Computer Use на сайте", url="https://aicenters.co/computer-use")],
+            [InlineKeyboardButton(text="← Меню", callback_data="back_menu")],
+        ])
+        await message.answer(done.get(lang, done["en"]), reply_markup=kb)
+        session["mode"] = "receptionist"
+        session["cu_pilot_step"] = None
+        logger.info(f"CU Pilot complete: {uid} system={data.get('system')}")
+        return True
+
+    if mode == "cu_demo":
+        # Notify admin
+        try:
+            await bot.send_message(ADMIN_ID,
+                f"📅 <b>Демо Computer Use!</b>\n\n"
+                f"👤 {message.from_user.full_name} (@{message.from_user.username or '?'})\n"
+                f"🕐 Время: {text}")
+        except Exception:
+            pass
+        done = {
+            "ru": "✅ <b>Подтверждаем демо!</b>\n\nОжидайте — мы свяжемся для подтверждения времени.",
+            "en": "✅ <b>Demo confirmed!</b>\n\nWe'll contact you to confirm the time.",
+        }
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="← Меню", callback_data="back_menu")],
+        ])
+        await message.answer(done.get(lang, done["en"]), reply_markup=kb)
+        session["mode"] = "receptionist"
+        logger.info(f"CU Demo scheduled: {uid} time={text}")
+        return True
+
+    return False
 
 
-# ─── Partner Registration & Referral Tracking ───
-
-@router.callback_query(F.data == "become_partner")
-async def become_partner(callback: CallbackQuery):
-    """Register user as partner via Platform API."""
-    try:
-        async with aiohttp.ClientSession() as session:
-            # Auth first
-            auth_resp = await session.post(
-                f"{PLATFORM_API_URL}/auth/telegram",
-                json={
-                    "id": callback.from_user.id,
-                    "first_name": callback.from_user.first_name or "",
-                    "last_name": callback.from_user.last_name or "",
-                    "username": callback.from_user.username or "",
-                    "photo_url": "", "auth_date": int(datetime.now().timestamp()),
-                    "hash": "sales_bot_internal"
-                },
-                timeout=aiohttp.ClientTimeout(total=10)
-            )
-            auth_data = await auth_resp.json()
-            jwt = auth_data.get("access_token", "")
-            
-            # Register as partner
-            resp = await session.post(
-                f"{PLATFORM_API_URL}/partners/register",
-                json={"name": callback.from_user.full_name, "telegram_id": callback.from_user.id},
-                headers={"Authorization": f"Bearer {jwt}"},
-                timeout=aiohttp.ClientTimeout(total=10)
-            )
-            
-            if resp.status == 201 or resp.status == 200:
-                result = await resp.json()
-                ref_link = result.get("ref_link", "")
-                ref_code = result.get("ref_code", "")
-                
-                await callback.message.edit_text(
-                    f"🎉 <b>Вы стали партнёром AI Centers!</b>\n\n"
-                    f"🔗 Ваша реферальная ссылка:\n<code>{ref_link}</code>\n\n"
-                    f"📊 Комиссия: 20% (Bronze)\n"
-                    f"📈 Рост: 5 продаж → 35%, 15 продаж → 50%\n\n"
-                    f"Отправляйте ссылку клиентам. При каждой оплате — комиссия на ваш счёт!",
-                    reply_markup=get_back_keyboard()
-                )
-            elif resp.status == 409:
-                await callback.message.edit_text(
-                    "✅ Вы уже партнёр! Ваша ссылка в личном кабинете:\naicenters.co/partners",
-                    reply_markup=get_back_keyboard()
-                )
-            else:
-                raise Exception(f"API {resp.status}")
-                
-    except Exception as e:
-        logger.error(f"Partner registration failed: {e}")
-        await callback.message.edit_text(
-            "⚠️ Не удалось зарегистрироваться. Попробуйте позже или напишите @CARGORAPIDO",
-            reply_markup=get_back_keyboard()
-        )
+@dp.callback_query(F.data == "back_menu")
+async def on_back_menu(callback: types.CallbackQuery):
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✨ Создать AI-помощника", callback_data="create")],
+        [InlineKeyboardButton(text="🖥 Computer Use (CRM, 1C, таблицы)", callback_data="computer_use")],
+        [InlineKeyboardButton(text="🤖 Каталог агентов", web_app=WebAppInfo(url="https://aicenters.co/miniapp.html"))],
+        [InlineKeyboardButton(text="🗣️ Голосовой AI-секретарь", callback_data="voice_ai")],
+        [InlineKeyboardButton(text="⭐ Тарифы и оплата", callback_data="pricing")],
+        [InlineKeyboardButton(text="🤝 Партнёрская программа", url="https://t.me/aicenters_hub_bot?start=partner")],
+        [InlineKeyboardButton(text="🌐 Сайт", url="https://aicenters.co")],
+    ])
+    await callback.message.answer("Вот что у нас есть:", reply_markup=kb)
     await callback.answer()
 
 
-async def track_partner_referral(ref_code: str, user, plan_id: str, amount: int):
-    """Track referral via Platform API."""
+@dp.callback_query(F.data == "catalog")
+async def on_catalog(callback: types.CallbackQuery):
+    uid = callback.from_user.id
+    session = get_session(uid)
+    
+    response = gemini_chat(SYSTEM_PROMPT, session["history"], "Покажи каталог готовых агентов. Какие есть?")
+    session["history"].append({"user": "Покажи каталог", "bot": response})
+    
+    await callback.message.answer(response)
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "voice_ai")
+async def on_voice_ai(callback: types.CallbackQuery):
+    uid = callback.from_user.id
+    session = get_session(uid)
+    
+    response = gemini_chat(SYSTEM_PROMPT, session["history"],
+        "[Система: клиент нажал кнопку 'Голосовой AI-секретарь'. Расскажи коротко что это: AI отвечает клиентам реалистичным голосом 24/7, от $300/мес. Спроси какой у него бизнес.]")
+    session["history"].append({"user": "Расскажи про голосового AI-секретаря", "bot": response})
+    
+    await callback.message.answer(response)
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "pricing")
+async def on_pricing(callback: types.CallbackQuery):
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="⭐ Неделя — 150 Stars (~$2.5)", callback_data="pay_week")],
+        [InlineKeyboardButton(text="⭐ Месяц — 500 Stars (~$8)", callback_data="pay_month")],
+        [InlineKeyboardButton(text="👑 Премиум — 1500 Stars (~$25)", callback_data="pay_premium")],
+        [InlineKeyboardButton(text="🤖 Бот под ключ — от $499", url="https://t.me/timurtokazov")],
+        [InlineKeyboardButton(text="🗣️ Голосовой секретарь — от $300/мес", url="https://t.me/timurtokazov")],
+    ])
+    await callback.message.answer(
+        "⭐ <b>Тарифы AI Centers</b>\n\n"
+        "🆓 <b>Бесплатно:</b> 20 сообщений с любым агентом\n\n"
+        "⭐ <b>Подписка через Telegram Stars:</b>\n"
+        "• Неделя — 150 ⭐ (~$2.5)\n"
+        "• Месяц — 500 ⭐ (~$8)\n"
+        "• Премиум — 1500 ⭐ (~$25)\n\n"
+        "🤖 <b>Бот под ключ:</b> от $499\n"
+        "🗣️ <b>Голосовой AI-секретарь:</b> от $300/мес\n\n"
+        "Выбери тариф:", reply_markup=kb)
+    await callback.answer()
+
+
+async def speech_to_text(ogg_bytes: bytes) -> str:
+    """Convert voice message to text using OpenAI Whisper."""
+    if not OPENAI_KEY:
+        return ""
+    boundary = "----FormBoundary7MA4YWxkTrZu0gW"
+    body = (
+        f"--{boundary}\r\n"
+        f'Content-Disposition: form-data; name="file"; filename="voice.ogg"\r\n'
+        f"Content-Type: audio/ogg\r\n\r\n"
+    ).encode() + ogg_bytes + (
+        f"\r\n--{boundary}\r\n"
+        f'Content-Disposition: form-data; name="model"\r\n\r\n'
+        f"whisper-1\r\n"
+        f"--{boundary}--\r\n"
+    ).encode()
+    req = urllib.request.Request(
+        "https://api.openai.com/v1/audio/transcriptions",
+        data=body,
+        headers={
+            "Authorization": f"Bearer {OPENAI_KEY}",
+            "Content-Type": f"multipart/form-data; boundary={boundary}",
+        },
+        method="POST"
+    )
+    loop = asyncio.get_event_loop()
+    resp = await loop.run_in_executor(None, lambda: urllib.request.urlopen(req, timeout=30))
+    result = json.loads(resp.read().decode())
+    return result.get("text", "")
+
+
+@dp.message(F.voice)
+async def on_voice(message: types.Message):
+    """Handle incoming voice messages — STT → process as text → reply with voice."""
+    uid = message.from_user.id
+    if check_rate_limit(uid):
+        await message.answer("⏳ Слишком много сообщений. Подожди минуту и попробуй снова.")
+        return
+    await bot.send_chat_action(message.chat.id, "record_voice")
+    
     try:
-        async with aiohttp.ClientSession() as session:
-            await session.post(
-                f"{PLATFORM_API_URL}/partners/track",
-                json={
-                    "ref_code": ref_code,
-                    "client_user_id": user.id,
-                    "client_name": user.full_name,
-                    "plan": plan_id,
-                    "amount": amount
-                },
-                headers={"X-Admin-Key": os.getenv("ADMIN_API_KEY", "aicenters_admin_2026")},
-                timeout=aiohttp.ClientTimeout(total=10)
-            )
-            logger.info(f"Referral tracked: ref={ref_code}, client={user.id}, plan={plan_id}")
+        # Download voice file
+        file = await bot.get_file(message.voice.file_id)
+        file_url = f"https://api.telegram.org/file/bot{TOKEN}/{file.file_path}"
+        loop = asyncio.get_event_loop()
+        req = urllib.request.Request(file_url)
+        resp = await loop.run_in_executor(None, lambda: urllib.request.urlopen(req, timeout=15))
+        ogg_bytes = resp.read()
+        
+        # STT
+        user_text = await speech_to_text(ogg_bytes)
+        if not user_text:
+            await message.answer("🎤 Не удалось распознать голосовое сообщение. Попробуйте ещё раз или напишите текстом.")
+            return
+        
+        logger.info(f"Voice from {message.from_user.id}: {user_text[:100]}")
+        
+        # Process as if it was a text message — inject text and call on_text logic
+        message.text = user_text
+        await on_text(message)
+        
     except Exception as e:
-        logger.error(f"Referral tracking failed: {e}")
+        logger.error(f"Voice handler error: {e}")
+        await message.answer("😔 Ошибка обработки голосового сообщения. Попробуйте написать текстом.")
 
 
-# ─── Register & Run ───
-dp.include_router(router)
+@dp.message(F.text)
+async def on_text(message: types.Message):
+    uid = message.from_user.id
+    session = get_session(uid)
+    text = message.text
+
+    # Rate limiting
+    if check_rate_limit(uid):
+        await message.answer("⏳ Слишком много сообщений. Подожди минуту и попробуй снова.")
+        return
+
+    # Prompt injection guard
+    if detect_injection(text):
+        logger.warning(f"Prompt injection attempt from {uid}: {text[:200]}")
+        await message.answer("🛡️ Некорректный запрос. Давай общаться нормально — спроси что тебя интересует!")
+        return
+    
+    # === Mode: custom assistant chat ===
+    if session["mode"] == "assistant" and session["persona"]:
+        session["count"] += 1
+        remaining = FREE_LIMIT - session["count"]
+        
+        if remaining <= 0 and not is_paid(uid) and not session.get("sales_mode"):
+            session["sales_mode"] = True
+            session["mode"] = "sales"
+            
+            sales_intro = gemini_chat(
+                SYSTEM_PROMPT + "\n\nСЕЙЧАС РЕЖИМ ПРОДАЖИ. Клиент только что исчерпал 20 бесплатных сообщений с AI-помощником. "
+                f"Его помощник: {session['persona']}. "
+                "Мягко скажи что бесплатные сообщения кончились, похвали выбор, предложи продолжить оплатив через Telegram Stars. "
+                "Скажи что неделя всего 150 ⭐, а месяц 500 ⭐ — и кнопки оплаты уже внизу.",
+                session["history"],
+                f"[Система: пользователь исчерпал лимит. Последнее сообщение: {text}]"
+            )
+            session["history"].append({"user": text, "bot": sales_intro})
+            
+            kb = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="⭐ Неделя — 150 Stars", callback_data="pay_week")],
+                [InlineKeyboardButton(text="⭐ Месяц — 500 Stars (выгодно!)", callback_data="pay_month")],
+                [InlineKeyboardButton(text="👑 Премиум — 1500 Stars", callback_data="pay_premium")],
+                [InlineKeyboardButton(text="💬 Связаться с @timurtokazov", url="https://t.me/timurtokazov")],
+            ])
+            await message.answer(sales_intro, reply_markup=kb)
+            
+            # Notify admin
+            user = message.from_user
+            try:
+                await bot.send_message(ADMIN_ID,
+                    f"🔥 <b>Горячий лид!</b>\n"
+                    f"👤 {user.full_name}{(' (@' + user.username + ')') if user.username else ''}\n"
+                    f"🆔 {user.id}\n"
+                    f"📝 Помощник: {session['persona'][:200]}\n"
+                    f"💬 {session['count']} сообщений использовано\n"
+                    f"⭐ Кнопки оплаты Stars отправлены")
+            except: pass
+            return
+        
+        # Paid user — no limit
+        if is_paid(uid):
+            remaining = 999
+        
+        # Normal assistant chat
+        system = ASSISTANT_SYSTEM.format(persona=session["persona"])
+        response = gemini_chat(system, session["history"], text)
+        session["history"].append({"user": text, "bot": response})
+        
+        if remaining <= 5 and remaining > 0:
+            response += f"\n\n<i>💬 Осталось {remaining} сообщений</i>"
+        
+        await send_with_voice(message, response)
+        return
+    
+    # === Mode: sales (after limit) ===
+    if session.get("mode") == "sales":
+        sales_prompt = (
+            SYSTEM_PROMPT + "\n\nРЕЖИМ ПРОДАЖИ. Клиент исчерпал бесплатный лимит. "
+            f"Его помощник был: {session.get('persona', 'не указан')}. "
+            "Отвечай на вопросы о ценах, тарифах. Будь дружелюбным, не дави. "
+            "Если хочет оплатить — дай ссылку на сайт aicenters.co или скажи написать @timurtokazov. "
+            "Если хочет помощника под ключ ($499+) — тоже направь к @timurtokazov."
+        )
+        response = gemini_chat(sales_prompt, session["history"], text)
+        session["history"].append({"user": text, "bot": response})
+        await send_with_voice(message, response)
+        return
+    
+    # === Mode: objection handler (sales funnel Q&A) ===
+    if session.get("mode") == "objection_handler":
+        lang = session.get("lang", "ru")
+        lang_instruction = {"ru": "Отвечай на русском.", "en": "Answer in English.", "ka": "უპასუხე ქართულად.", "tr": "Türkçe cevap ver.", "kk": "Қазақша жауап бер.", "uz": "O'zbekcha javob ber."}
+        objection_prompt = (
+            SYSTEM_PROMPT + f"\n\nРЕЖИМ ОБРАБОТКИ ВОЗРАЖЕНИЙ. "
+            f"{lang_instruction.get(lang, 'Answer in English.')} "
+            "Клиент интересуется AI-ботом для бизнеса, но задаёт вопросы перед покупкой. "
+            "Отвечай коротко (2-4 предложения), конкретно, с фактами. "
+            "В конце ответа мягко верни к действию."
+        )
+        response = gemini_chat(objection_prompt, session["history"], text)
+        session["history"].append({"user": text, "bot": response})
+
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text=t(lang, "btn_try_free").split("(")[0].strip(), callback_data="funnel_demo")],
+            [InlineKeyboardButton(text=t(lang, "btn_pricing"), callback_data="funnel_pricing")],
+            [InlineKeyboardButton(text=t(lang, "btn_more_question"), callback_data="funnel_question")],
+        ])
+        await message.answer(response, reply_markup=kb)
+        return
+
+    # === Computer Use pilot/demo flow ===
+    if await handle_cu_text(message, session):
+        return
+
+    # === Funnel gate: always show funnel before Gemini ===
+    if not session.get("funnel_shown"):
+        return await show_funnel_step1(message)
+
+    # === Mode: receptionist (default) ===
+    response = gemini_chat(SYSTEM_PROMPT, session["history"], text)
+    session["history"].append({"user": text, "bot": response})
+    
+    # Check for payment markers [PAY:week/month/premium/custom]
+    import re as _re
+    pay_match = _re.search(r'\[PAY:(\w+)\]', response)
+    if pay_match:
+        plan_key = pay_match.group(1)
+        clean_resp = _re.sub(r'\[PAY:\w+\]', '', response).strip()
+        if clean_resp:
+            await message.answer(clean_resp)
+        if plan_key in STAR_PLANS:
+            await send_stars_invoice(message, plan_key)
+        session["history"].append({"user": text, "bot": clean_resp})
+        return
+    
+    # Check if receptionist wants to create an assistant
+    if "[CREATE_ASSISTANT:" in response or "[CREATE_ASSISTANT]" in response:
+        # Extract persona description
+        import re
+        match = re.search(r'\[CREATE_ASSISTANT[:\s]*([^\]]*)\]', response)
+        if match and match.group(1).strip():
+            persona = match.group(1).strip()
+        else:
+            persona = text  # use user's message as persona
+        
+        # Clean the marker from response
+        clean_response = re.sub(r'\[CREATE_ASSISTANT[:\s]*[^\]]*\]', '', response).strip()
+        
+        session["persona"] = persona
+        session["mode"] = "assistant"
+        session["count"] = 0
+        session["history"] = []  # fresh history for assistant
+        
+        # Generate first assistant response
+        system = ASSISTANT_SYSTEM.format(persona=persona)
+        greeting = gemini_chat(system, [], "Привет! Представься и предложи помощь. 2-3 предложения.")
+        session["history"].append({"user": "Привет", "bot": greeting})
+        session["count"] = 1
+        
+        if clean_response:
+            await message.answer(clean_response)
+        await message.answer(f"{'—' * 15}\n{greeting}\n{'—' * 15}\n\n<i>💬 {FREE_LIMIT - 1} бесплатных сообщений</i>")
+        
+        # Notify admin
+        user = message.from_user
+        try:
+            await bot.send_message(ADMIN_ID,
+                f"🆕 <b>Новый AI-помощник!</b>\n"
+                f"👤 {user.full_name}{(' (@' + user.username + ')') if user.username else ''}\n"
+                f"📝 {persona[:300]}")
+        except: pass
+        
+        logger.info(f"Created assistant for {uid}: {persona[:100]}")
+    else:
+        await send_with_voice(message, response)
+
 
 async def main():
-    logger.info("Starting AI Centers Sales Bot v2.0...")
-    init_payments_db()
-    if not GEMINI_API_KEY:
-        logger.error("GEMINI_API_KEY not set!")
-        return
-    if BOT_TOKEN == "placeholder_token":
-        logger.warning("BOT_TOKEN not set!")
-    try:
-        await dp.start_polling(bot, skip_updates=True)
-    finally:
-        await bot.session.close()
+    logger.info("AI Centers Receptionist (live mode) starting...")
+    await bot.delete_webhook(drop_pending_updates=True)
+    await dp.start_polling(bot)
 
 if __name__ == "__main__":
     asyncio.run(main())
