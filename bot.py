@@ -1666,21 +1666,45 @@ async def on_text(message: types.Message):
 
                 if resp.status in (200, 201):
                     bot_username = result.get("bot_username", "")
+                    session["created_bot_username"] = bot_username
                     kb = InlineKeyboardMarkup(inline_keyboard=[
                         [InlineKeyboardButton(text=f"🤖 Открыть @{bot_username}", url=f"https://t.me/{bot_username}")] if bot_username else [],
                         [InlineKeyboardButton(text="🏠 Главное меню", callback_data="back_menu")],
                     ])
+                    # Message 1: Success
                     await message.answer(
                         f"🎉 <b>Ваш AI-ассистент создан!</b>\n\n"
                         f"🤖 Бот: @{bot_username}\n"
-                        f"🏢 {biz_name}\n"
-                        f"📱 Уже работает и готов общаться с клиентами!\n\n"
-                        f"<b>Что дальше:</b>\n"
-                        f"• Добавьте бота в группу или канал\n"
-                        f"• Поделитесь ссылкой t.me/{bot_username} с клиентами\n"
-                        f"• Пишите сюда, если нужны доработки",
-                        reply_markup=kb,
+                        f"🏢 {biz_name}\n\n"
+                        f"✅ Бот уже запущен и готов общаться с клиентами!",
                     )
+
+                    # Message 2: Step-by-step guide
+                    ch = session.get("ob_channel", "telegram")
+                    guide_tg = (
+                        f"📱 <b>Шаг 1 — Проверьте бота</b>\n"
+                        f"Откройте @{bot_username} и напишите что-нибудь — проверьте, как он отвечает.\n\n"
+                        f"📱 <b>Шаг 2 — Подключите к вашему каналу</b>\n"
+                        f"• <b>В личных сообщениях:</b> Просто отправляйте ссылку t.me/{bot_username} клиентам\n"
+                        f"• <b>В группе:</b> Добавьте @{bot_username} в группу → дайте права Admin → бот будет отвечать автоматически\n"
+                        f"• <b>На сайте:</b> Вставьте виджет: <code>&lt;script src=\"https://aicenters.co/widget/{bot_username}\"&gt;&lt;/script&gt;</code>\n\n"
+                        f"📱 <b>Шаг 3 — Расскажите клиентам</b>\n"
+                        f"• Добавьте ссылку t.me/{bot_username} на сайт, в Instagram био, визитки\n"
+                        f"• Отправьте ссылку существующим клиентам\n"
+                        f"• Бот работает 24/7 — даже когда вы спите 😴\n\n"
+                        f"📱 <b>Шаг 4 — Доработки</b>\n"
+                        f"Хотите изменить ответы, добавить данные или настроить меню?\n"
+                        f"Просто напишите нам сюда — мы поможем!"
+                    )
+
+                    guide_kb = InlineKeyboardMarkup(inline_keyboard=[
+                        [InlineKeyboardButton(text=f"🤖 Проверить @{bot_username}", url=f"https://t.me/{bot_username}")],
+                        [InlineKeyboardButton(text="📝 Доработать бота", callback_data="ob_customize_bot")],
+                        [InlineKeyboardButton(text="📊 Статистика", callback_data="ob_bot_stats")],
+                        [InlineKeyboardButton(text="🏠 Главное меню", callback_data="back_menu")],
+                    ])
+
+                    await message.answer(guide_tg, reply_markup=guide_kb)
 
                     try:
                         await bot.send_message(ADMIN_ID,
@@ -2074,6 +2098,61 @@ async def on_ob_create_bot(callback: types.CallbackQuery):
 
 
 ENGINE_API_URL = os.getenv("ENGINE_API_URL", "https://ai-centers-dashboard-production.up.railway.app")
+
+@dp.callback_query(F.data == "ob_customize_bot")
+async def on_ob_customize(callback: types.CallbackQuery):
+    session = get_session(callback.from_user.id)
+    bot_username = session.get("created_bot_username", "ваш бот")
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📄 Обновить данные / прайс", callback_data="ob_send_desc")],
+        [InlineKeyboardButton(text="📎 Добавить ссылку на сайт", callback_data="ob_send_url")],
+        [InlineKeyboardButton(text="💬 Написать что изменить", callback_data="ob_send_custom_request")],
+        [InlineKeyboardButton(text="🏠 Главное меню", callback_data="back_menu")],
+    ])
+    await callback.message.answer(
+        f"🔧 <b>Доработка @{bot_username}</b>\n\n"
+        f"Что хотите изменить?\n"
+        f"• Обновить информацию (цены, меню, услуги)\n"
+        f"• Изменить стиль общения\n"
+        f"• Добавить новые возможности\n\n"
+        f"Выберите или просто напишите что нужно 👇",
+        reply_markup=kb,
+    )
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "ob_send_custom_request")
+async def on_ob_custom_request(callback: types.CallbackQuery):
+    session = get_session(callback.from_user.id)
+    session["awaiting_data"] = "custom_request"
+    await callback.message.answer(
+        "✏️ <b>Опишите что нужно изменить</b>\n\n"
+        "Например:\n"
+        "• «Добавь в меню новые блюда: ...»\n"
+        "• «Пусть бот спрашивает номер телефона при заказе»\n"
+        "• «Измени приветствие на ...»\n\n"
+        "Просто напишите 👇"
+    )
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "ob_bot_stats")
+async def on_ob_bot_stats(callback: types.CallbackQuery):
+    await callback.message.answer(
+        "📊 <b>Статистика бота</b>\n\n"
+        "Статистика будет доступна после первых диалогов с клиентами.\n\n"
+        "Вы увидите:\n"
+        "• 💬 Количество диалогов\n"
+        "• ⭐ Конверсия в заказ/бронь\n"
+        "• 📈 Популярные вопросы\n"
+        "• ⏱ Среднее время ответа\n\n"
+        "Начните привлекать клиентов — данные появятся автоматически!",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🏠 Главное меню", callback_data="back_menu")],
+        ]),
+    )
+    await callback.answer()
+
 
 @dp.callback_query(F.data == "ob_help_botfather")
 async def on_ob_help_botfather(callback: types.CallbackQuery):
