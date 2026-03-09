@@ -1740,14 +1740,6 @@ async def on_text(message: types.Message):
         await send_with_voice(message, response, reply_markup=action_kb)
 
 
-async def main():
-    logger.info("AI Centers Receptionist (live mode) starting...")
-    await bot.delete_webhook(drop_pending_updates=True)
-    await dp.start_polling(bot)
-
-if __name__ == "__main__":
-    asyncio.run(main())
-
 
 # ══════════════════════════════════════════
 # ONBOARDING FLOW (after payment)
@@ -1837,3 +1829,13 @@ async def on_ob_channel(callback: types.CallbackQuery):
             f"📱 Канал: {ch_name}\n\n"
             f"⚡ Нужно настроить бота!")
     except: pass
+
+
+async def main():
+    logger.info("AI Centers Receptionist (live mode) starting...")
+    await bot.delete_webhook(drop_pending_updates=True)
+    await dp.start_polling(bot)
+
+if __name__ == "__main__":
+    asyncio.run(main())
+
