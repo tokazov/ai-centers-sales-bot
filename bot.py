@@ -2340,23 +2340,161 @@ async def on_guide_website(callback: types.CallbackQuery):
     bot_username = session.get("created_bot_username", "ваш_бот")
     await callback.message.answer(
         f"🌐 <b>Подключение к сайту</b>\n\n"
-        f"Чат-виджет в правом нижнем углу вашего сайта — клиенты пишут прямо на странице.\n\n"
-        f"<b>Как подключить (2 минуты):</b>\n\n"
-        f"1️⃣ Скопируйте этот код:\n\n"
-        f"<code>&lt;script\n"
-        f"  src=\"https://aicenters.co/widget.js\"\n"
-        f"  data-bot=\"{bot_username}\"\n"
+        f"Чат-виджет в правом нижнем углу — клиенты пишут прямо на вашем сайте.\n"
+        f"Выберите вашу платформу:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="📋 Универсальный код (любой сайт)", callback_data="web_code")],
+            [InlineKeyboardButton(text="🔵 WordPress", callback_data="web_wordpress")],
+            [InlineKeyboardButton(text="🟣 Tilda", callback_data="web_tilda")],
+            [InlineKeyboardButton(text="🟠 Wix", callback_data="web_wix")],
+            [InlineKeyboardButton(text="🟢 Shopify", callback_data="web_shopify")],
+            [InlineKeyboardButton(text="🔗 Ссылка на чат (без сайта)", callback_data="web_link")],
+            [InlineKeyboardButton(text="◀️ Другие каналы", callback_data="guide_back")],
+        ]),
+    )
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "web_code")
+async def on_web_code(callback: types.CallbackQuery):
+    session = get_session(callback.from_user.id)
+    bot_username = session.get("created_bot_username", "ваш_бот")
+    await callback.message.answer(
+        f"📋 <b>Универсальный код виджета</b>\n\n"
+        f"Работает на любом сайте. Вставьте один раз — виджет появится на всех страницах.\n\n"
+        f"<b>Скопируйте этот код:</b>\n\n"
+        f"<code>&lt;!-- AI Centers Chat Widget --&gt;\n"
+        f"&lt;script\n"
+        f"  src=\"https://ai-centers-dashboard-production.up.railway.app/widget/{bot_username}/embed\"\n"
         f"  async&gt;\n"
         f"&lt;/script&gt;</code>\n\n"
-        f"2️⃣ Вставьте перед <code>&lt;/body&gt;</code> на вашем сайте\n\n"
-        f"3️⃣ Готово! Виджет появится на всех страницах 🎉\n\n"
+        f"<b>Куда вставить:</b>\n"
+        f"Откройте HTML код вашего сайта и добавьте этот код перед <code>&lt;/body&gt;</code>\n\n"
         f"{'─' * 25}\n\n"
-        f"💡 <b>Нет доступа к коду сайта?</b>\n"
-        f"• <b>WordPress:</b> Вставьте в «Внешний вид → Виджеты → HTML»\n"
-        f"• <b>Tilda:</b> Блок T123 → HTML код\n"
-        f"• <b>Другое:</b> Напишите нам — поможем встроить",
+        f"🎨 <b>Настройка внешнего вида:</b>\n"
+        f"Виджет автоматически использует цвета и название вашего бизнеса.\n"
+        f"Хотите изменить цвета или логотип? Напишите нам!",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="◀️ Другие каналы", callback_data="guide_back")],
+            [InlineKeyboardButton(text="◀️ Назад", callback_data="guide_website")],
+        ]),
+    )
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "web_wordpress")
+async def on_web_wordpress(callback: types.CallbackQuery):
+    session = get_session(callback.from_user.id)
+    bot_username = session.get("created_bot_username", "ваш_бот")
+    await callback.message.answer(
+        f"🔵 <b>WordPress</b>\n\n"
+        f"<b>Способ 1 — Через плагин (рекомендуем):</b>\n"
+        f"1. Панель управления → Плагины → Добавить\n"
+        f"2. Найдите <b>Insert Headers and Footers</b> → Установить\n"
+        f"3. Настройки → Insert Headers and Footers\n"
+        f"4. В поле <b>Footer</b> вставьте код виджета\n"
+        f"5. Сохранить ✅\n\n"
+        f"<b>Способ 2 — Через тему:</b>\n"
+        f"1. Внешний вид → Редактор тем → footer.php\n"
+        f"2. Перед <code>&lt;/body&gt;</code> вставьте код виджета\n"
+        f"3. Сохранить ✅\n\n"
+        f"<b>Способ 3 — Виджет HTML:</b>\n"
+        f"1. Внешний вид → Виджеты\n"
+        f"2. Добавить виджет «Произвольный HTML»\n"
+        f"3. Вставьте код виджета\n\n"
+        f"<b>Код:</b>\n"
+        f"<code>&lt;script src=\"https://ai-centers-dashboard-production.up.railway.app/widget/{bot_username}/embed\" async&gt;&lt;/script&gt;</code>",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="◀️ Назад", callback_data="guide_website")],
+        ]),
+    )
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "web_tilda")
+async def on_web_tilda(callback: types.CallbackQuery):
+    session = get_session(callback.from_user.id)
+    bot_username = session.get("created_bot_username", "ваш_бот")
+    await callback.message.answer(
+        f"🟣 <b>Tilda</b>\n\n"
+        f"<b>Способ 1 — Блок HTML (на конкретную страницу):</b>\n"
+        f"1. Откройте страницу в редакторе\n"
+        f"2. Добавьте блок <b>T123 — HTML код</b>\n"
+        f"3. Вставьте код виджета\n"
+        f"4. Опубликуйте страницу ✅\n\n"
+        f"<b>Способ 2 — На все страницы сайта:</b>\n"
+        f"1. Настройки сайта → Ещё → HTML-код для вставки в &lt;/body&gt;\n"
+        f"2. Вставьте код виджета\n"
+        f"3. Опубликуйте все страницы ✅\n\n"
+        f"<b>Код:</b>\n"
+        f"<code>&lt;script src=\"https://ai-centers-dashboard-production.up.railway.app/widget/{bot_username}/embed\" async&gt;&lt;/script&gt;</code>",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="◀️ Назад", callback_data="guide_website")],
+        ]),
+    )
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "web_wix")
+async def on_web_wix(callback: types.CallbackQuery):
+    session = get_session(callback.from_user.id)
+    bot_username = session.get("created_bot_username", "ваш_бот")
+    await callback.message.answer(
+        f"🟠 <b>Wix</b>\n\n"
+        f"1. Откройте редактор сайта\n"
+        f"2. Нажмите <b>+ Добавить</b> → <b>Embed Code</b> → <b>Custom Code</b>\n"
+        f"3. Вставьте код виджета\n"
+        f"4. Выберите расположение: <b>Body - end</b>\n"
+        f"5. Применить на: <b>Все страницы</b>\n"
+        f"6. Опубликуйте ✅\n\n"
+        f"<b>Код:</b>\n"
+        f"<code>&lt;script src=\"https://ai-centers-dashboard-production.up.railway.app/widget/{bot_username}/embed\" async&gt;&lt;/script&gt;</code>",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="◀️ Назад", callback_data="guide_website")],
+        ]),
+    )
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "web_shopify")
+async def on_web_shopify(callback: types.CallbackQuery):
+    session = get_session(callback.from_user.id)
+    bot_username = session.get("created_bot_username", "ваш_бот")
+    await callback.message.answer(
+        f"🟢 <b>Shopify</b>\n\n"
+        f"1. Админ-панель → <b>Online Store</b> → <b>Themes</b>\n"
+        f"2. <b>Edit code</b> → найдите <b>theme.liquid</b>\n"
+        f"3. Перед <code>&lt;/body&gt;</code> вставьте код виджета\n"
+        f"4. Сохранить ✅\n\n"
+        f"<b>Код:</b>\n"
+        f"<code>&lt;script src=\"https://ai-centers-dashboard-production.up.railway.app/widget/{bot_username}/embed\" async&gt;&lt;/script&gt;</code>",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="◀️ Назад", callback_data="guide_website")],
+        ]),
+    )
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "web_link")
+async def on_web_link(callback: types.CallbackQuery):
+    session = get_session(callback.from_user.id)
+    bot_username = session.get("created_bot_username", "ваш_бот")
+    await callback.message.answer(
+        f"🔗 <b>Ссылка на чат (без сайта)</b>\n\n"
+        f"Нет своего сайта? Не проблема!\n\n"
+        f"<b>Ваша ссылка на AI-чат:</b>\n"
+        f"<code>https://ai-centers-dashboard-production.up.railway.app/widget/{bot_username}/embed</code>\n\n"
+        f"<b>Где использовать:</b>\n"
+        f"• 📸 В Instagram bio\n"
+        f"• 💬 В WhatsApp статусе\n"
+        f"• 📱 В TikTok профиле\n"
+        f"• 📧 В email подписи\n"
+        f"• 🖨 На визитках (QR-код)\n"
+        f"• 📋 В Google Maps / 2GIS\n\n"
+        f"А для Telegram — просто давайте клиентам ссылку:\n"
+        f"<code>https://t.me/{bot_username}</code>",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text=f"🤖 Открыть @{bot_username}", url=f"https://t.me/{bot_username}")],
+            [InlineKeyboardButton(text="◀️ Назад", callback_data="guide_website")],
         ]),
     )
     await callback.answer()
