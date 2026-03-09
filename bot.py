@@ -1783,6 +1783,15 @@ async def on_text(message: types.Message):
 # ══════════════════════════════════════════
 
 # Step 1: Business niche selected
+@dp.callback_query(F.data.startswith("ob_channel_"))
+async def on_ob_channel(callback: types.CallbackQuery):
+    uid = callback.from_user.id
+    session = get_session(uid)
+    channel = callback.data.replace("ob_channel_", "")
+    session["ob_channel"] = channel
+    session["onboarding_step"] = 5
+    lang = session.get("lang", "ru")
+
 @dp.callback_query(F.data.startswith("ob_"))
 async def on_ob_niche(callback: types.CallbackQuery):
     uid = callback.from_user.id
@@ -1813,14 +1822,7 @@ async def on_ob_niche(callback: types.CallbackQuery):
 
 
 # Step 4: Channel selection
-@dp.callback_query(F.data.startswith("ob_channel_"))
-async def on_ob_channel(callback: types.CallbackQuery):
-    uid = callback.from_user.id
-    session = get_session(uid)
-    channel = callback.data.replace("ob_channel_", "")
-    session["ob_channel"] = channel
-    session["onboarding_step"] = 5
-    lang = session.get("lang", "ru")
+
 
     channel_names = {"telegram": "Telegram", "whatsapp": "WhatsApp", "website": "Сайт", "all": "Все каналы"}
     ch_name = channel_names.get(channel, channel)
