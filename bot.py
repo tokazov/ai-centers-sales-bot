@@ -909,6 +909,33 @@ async def activate_cu(message: types.Message, uid: int, user, stars: int):
     logger.info(f"CU Activated: {uid} stars={stars}")
 
 
+# Back to Step 1 — niche selection
+@dp.callback_query(F.data == "back_step1")
+async def on_back_step1(callback: types.CallbackQuery):
+    uid = callback.from_user.id
+    session = get_session(uid)
+    lang = session.get("lang", detect_lang(callback.from_user))
+    name = callback.from_user.first_name or "👋"
+    welcome_texts = {
+        "ru": f"👋 {name}, привет!\n\nЯ помогу автоматизировать ваш бизнес за 5 минут.\n<b>Какой у вас бизнес?</b>",
+        "en": f"👋 Hi, {name}!\n\nI'll help automate your business in 5 minutes.\n<b>What's your business?</b>",
+        "ka": f"👋 გამარჯობა, {name}!\n\n5 წუთში თქვენს ბიზნესს ავტომატიზირებთ.\n<b>რა ბიზნესი გაქვთ?</b>",
+        "tr": f"👋 Merhaba, {name}!\n\nİşinizi 5 dakikada otomatikleştireceğim.\n<b>İşiniz nedir?</b>",
+    }
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=t(lang, "biz_restaurant"), callback_data="biz_restaurant"),
+         InlineKeyboardButton(text=t(lang, "biz_clinic"), callback_data="biz_clinic")],
+        [InlineKeyboardButton(text=t(lang, "biz_salon"), callback_data="biz_salon"),
+         InlineKeyboardButton(text=t(lang, "biz_shop"), callback_data="biz_shop")],
+        [InlineKeyboardButton(text=t(lang, "biz_services"), callback_data="biz_services"),
+         InlineKeyboardButton(text=t(lang, "biz_other"), callback_data="biz_other")],
+        [InlineKeyboardButton(text="🖥 AI Computer Use", callback_data="biz_computer")],
+        [InlineKeyboardButton(text=t(lang, "btn_order_assistant"), callback_data="funnel_pricing")],
+    ])
+    await callback.message.edit_text(welcome_texts.get(lang, welcome_texts["en"]), reply_markup=kb)
+    await callback.answer()
+
+
 # Step 2 — Pain point
 @dp.callback_query(F.data.startswith("biz_"))
 async def on_biz_select(callback: types.CallbackQuery):
@@ -924,6 +951,7 @@ async def on_biz_select(callback: types.CallbackQuery):
         [InlineKeyboardButton(text=t(lang, "leads_50"), callback_data="leads_50")],
         [InlineKeyboardButton(text=t(lang, "leads_100"), callback_data="leads_100")],
         [InlineKeyboardButton(text=t(lang, "leads_unknown"), callback_data="leads_unknown")],
+        [InlineKeyboardButton(text="← Назад", callback_data="back_step1")],
     ])
 
     await callback.message.edit_text(
@@ -954,18 +982,18 @@ async def on_leads_select(callback: types.CallbackQuery):
 
     case_key = NICHE_TO_CASE.get(niche, "case_other")
     case = t(lang, case_key)
+    offer_text = t(lang, "offer", savings=save_text)
 
-    await callback.message.edit_text(case)
-
-    # Step 4 — Offer
+    # Case + offer in one message with buttons
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=t(lang, "btn_order_assistant"), callback_data="funnel_pricing")],
         [InlineKeyboardButton(text=t(lang, "btn_try_free"), callback_data="funnel_demo")],
         [InlineKeyboardButton(text=t(lang, "btn_question"), callback_data="funnel_question")],
+        [InlineKeyboardButton(text="← Назад", callback_data="back_step1")],
     ])
 
-    await callback.message.answer(
-        t(lang, "offer", savings=save_text),
+    await callback.message.edit_text(
+        f"{case}\n\n{'─' * 30}\n\n{offer_text}",
         reply_markup=kb,
     )
     await callback.answer()
