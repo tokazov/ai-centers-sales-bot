@@ -1792,42 +1792,9 @@ async def on_ob_channel(callback: types.CallbackQuery):
     session["onboarding_step"] = 5
     lang = session.get("lang", "ru")
 
-@dp.callback_query(F.data.startswith("ob_"))
-async def on_ob_niche(callback: types.CallbackQuery):
-    uid = callback.from_user.id
-    session = get_session(uid)
-    niche = callback.data.replace("ob_", "")
-    session["ob_niche"] = niche
-    session["onboarding_step"] = 2
-    lang = session.get("lang", "ru")
-
-    niche_names = {
-        "restaurant": "Ресторан / кафе", "clinic": "Клиника", "salon": "Салон красоты",
-        "shop": "Магазин", "services": "Услуги / B2B", "other": "Другое",
-    }
-    session["ob_niche_name"] = niche_names.get(niche, niche)
-
-    await callback.message.edit_text(
-        f"✅ Ниша: <b>{session['ob_niche_name']}</b>\n\n"
-        f"📋 <b>Шаг 2 из 4 — Название бизнеса</b>\n\n"
-        f"Напишите название вашей компании (как клиенты вас знают).\n"
-        f"Например: <i>Ресторан «У Георгия»</i>",
-    )
-    await callback.answer()
-
-
-# Step 2: Business name (text input)
-# Step 3: What should bot do (text input)
-# These are handled in the main message handler
-
-
-# Step 4: Channel selection
-
-
     channel_names = {"telegram": "Telegram", "whatsapp": "WhatsApp", "website": "Сайт", "all": "Все каналы"}
     ch_name = channel_names.get(channel, channel)
 
-    # ── Onboarding complete! Create the assistant ──
     niche = session.get("ob_niche_name", "бизнес")
     biz_name = session.get("ob_biz_name", "Мой бизнес")
     tasks = session.get("ob_tasks", "общение с клиентами")
@@ -1857,7 +1824,6 @@ async def on_ob_niche(callback: types.CallbackQuery):
     session["onboarding"] = False
     session["onboarding_step"] = 0
 
-    # Notify admin with full onboarding data
     user = callback.from_user
     try:
         await bot.send_message(ADMIN_ID,
@@ -1869,6 +1835,35 @@ async def on_ob_niche(callback: types.CallbackQuery):
             f"📱 Канал: {ch_name}\n\n"
             f"⚡ Нужно настроить бота!")
     except: pass
+
+
+@dp.callback_query(F.data.startswith("ob_"))
+async def on_ob_niche(callback: types.CallbackQuery):
+    uid = callback.from_user.id
+    session = get_session(uid)
+    niche = callback.data.replace("ob_", "")
+    session["ob_niche"] = niche
+    session["onboarding_step"] = 2
+    lang = session.get("lang", "ru")
+
+    niche_names = {
+        "restaurant": "Ресторан / кафе", "clinic": "Клиника", "salon": "Салон красоты",
+        "shop": "Магазин", "services": "Услуги / B2B", "other": "Другое",
+    }
+    session["ob_niche_name"] = niche_names.get(niche, niche)
+
+    await callback.message.edit_text(
+        f"✅ Ниша: <b>{session['ob_niche_name']}</b>\n\n"
+        f"📋 <b>Шаг 2 из 4 — Название бизнеса</b>\n\n"
+        f"Напишите название вашей компании (как клиенты вас знают).\n"
+        f"Например: <i>Ресторан «У Георгия»</i>",
+    )
+    await callback.answer()
+
+
+# Step 2: Business name (text input)
+# Step 3: What should bot do (text input)
+# These are handled in the main message handler
 
 
 async def main():
