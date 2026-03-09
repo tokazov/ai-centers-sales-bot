@@ -1820,12 +1820,26 @@ async def on_ob_channel(callback: types.CallbackQuery):
     except: pass
     await callback.answer()
 
-    # Send summary as NEW message (always visible at bottom)
-    kb = InlineKeyboardMarkup(inline_keyboard=[
+    # Context-aware buttons based on niche
+    niche_key = session.get("ob_niche", "other")
+    buttons = [
         [InlineKeyboardButton(text="📎 Отправить ссылку на сайт", callback_data="ob_send_url")],
-        [InlineKeyboardButton(text="💬 Написать описание бизнеса", callback_data="ob_send_desc")],
-        [InlineKeyboardButton(text="🏠 Главное меню", callback_data="back_menu")],
-    ])
+    ]
+    # Niche-specific buttons
+    if niche_key == "restaurant":
+        buttons.append([InlineKeyboardButton(text="🍽 Загрузить меню ресторана", callback_data="ob_send_menu")])
+    elif niche_key == "clinic":
+        buttons.append([InlineKeyboardButton(text="🏥 Загрузить прайс услуг", callback_data="ob_send_price")])
+    elif niche_key == "salon":
+        buttons.append([InlineKeyboardButton(text="💇 Загрузить прайс услуг", callback_data="ob_send_price")])
+    elif niche_key == "shop":
+        buttons.append([InlineKeyboardButton(text="🛍 Загрузить каталог товаров", callback_data="ob_send_catalog")])
+    else:
+        buttons.append([InlineKeyboardButton(text="📄 Загрузить прайс / каталог", callback_data="ob_send_price")])
+
+    buttons.append([InlineKeyboardButton(text="💬 Написать описание бизнеса", callback_data="ob_send_desc")])
+    buttons.append([InlineKeyboardButton(text="🏠 Главное меню", callback_data="back_menu")])
+    kb = InlineKeyboardMarkup(inline_keyboard=buttons)
 
     await callback.message.answer(summary, reply_markup=kb)
 
@@ -1856,6 +1870,34 @@ async def on_ob_send_url(callback: types.CallbackQuery):
         "Мы изучим сайт и обучим бота на его содержимом — меню, цены, услуги, FAQ.\n\n"
         "Просто отправьте URL 👇"
     )
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "ob_send_menu")
+async def on_ob_send_menu(callback: types.CallbackQuery):
+    session = get_session(callback.from_user.id)
+    session["awaiting_data"] = "menu"
+    await callback.message.answer(
+        "🍽 <b>Загрузите меню ресторана</b>\n\n"
+        "Отправьте фото меню, PDF-файл или текстом:\n"
+        "• Названия блюд и цены\n"
+        "• Категории (салаты, горячее, напитки)\n"
+        "• Калорийность (если есть) — бот сможет рассказать клиентам!\n\n"
+        "📸 Фото / 📄 PDF / ✏️ Текст — что удобнее 👇"
+    )
+    await callback.answer()
+
+
+@dp.callback_query(F.data.in_({"ob_send_price", "ob_send_catalog"}))
+async def on_ob_send_price(callback: types.CallbackQuery):
+    session = get_session(callback.from_user.id)
+    session["awaiting_data"] = "price"
+    niche_key = session.get("ob_niche", "other")
+    if niche_key == "shop":
+        text = "🛍 <b>Загрузите каталог товаров</b>\n\nОтправьте фото, PDF или текстом:\n• Названия и цены\n• Категории\n• Наличие\n\n📸 Фото / 📄 PDF / ✏️ Текст 👇"
+    else:
+        text = "📄 <b>Загрузите прайс-лист</b>\n\nОтправьте фото, PDF или текстом:\n• Услуги и цены\n• Длительность\n• Акции / скидки\n\n📸 Фото / 📄 PDF / ✏️ Текст 👇"
+    await callback.message.answer(text)
     await callback.answer()
 
 
