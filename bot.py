@@ -1814,27 +1814,65 @@ async def on_ob_channel(callback: types.CallbackQuery):
         f"Просто отправляйте файлы и ссылки прямо сюда 👇"
     )
 
+    # Remove Step 4 buttons
+    try:
+        await callback.message.edit_text(f"✅ Канал: <b>{ch_name}</b>")
+    except: pass
+    await callback.answer()
+
+    # Send summary as NEW message (always visible at bottom)
     kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📎 Отправить ссылку на сайт", callback_data="ob_send_url")],
+        [InlineKeyboardButton(text="💬 Написать описание бизнеса", callback_data="ob_send_desc")],
         [InlineKeyboardButton(text="📋 Меню", callback_data="back_menu")],
     ])
 
-    await callback.message.edit_text(summary, reply_markup=kb)
-    await callback.answer()
+    await callback.message.answer(summary, reply_markup=kb)
 
     session["onboarding"] = False
     session["onboarding_step"] = 0
+    session["awaiting_data"] = True
 
+    # Notify admin (separate message, only admin sees it)
     user = callback.from_user
-    try:
-        await bot.send_message(ADMIN_ID,
-            f"🚀 <b>НОВЫЙ КЛИЕНТ — ONBOARDING COMPLETE!</b>\n\n"
-            f"👤 {user.full_name}{(' (@' + user.username + ')') if user.username else ''}\n"
-            f"🆔 {user.id}\n"
-            f"🏢 {biz_name} ({niche})\n"
-            f"📝 Задачи: {tasks[:300]}\n"
-            f"📱 Канал: {ch_name}\n\n"
-            f"⚡ Нужно настроить бота!")
-    except: pass
+    if uid != ADMIN_ID:
+        try:
+            await bot.send_message(ADMIN_ID,
+                f"🚀 <b>НОВЫЙ КЛИЕНТ!</b>\n\n"
+                f"👤 {user.full_name}{(' (@' + user.username + ')') if user.username else ''}\n"
+                f"🆔 {user.id}\n"
+                f"🏢 {biz_name} ({niche})\n"
+                f"📝 {tasks[:300]}\n"
+                f"📱 {ch_name}")
+        except: pass
+
+
+@dp.callback_query(F.data == "ob_send_url")
+async def on_ob_send_url(callback: types.CallbackQuery):
+    session = get_session(callback.from_user.id)
+    session["awaiting_data"] = "url"
+    await callback.message.answer(
+        "🌐 <b>Отправьте ссылку на ваш сайт</b>\n\n"
+        "Мы изучим сайт и обучим бота на его содержимом — меню, цены, услуги, FAQ.\n\n"
+        "Просто отправьте URL 👇"
+    )
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "ob_send_desc")
+async def on_ob_send_desc(callback: types.CallbackQuery):
+    session = get_session(callback.from_user.id)
+    session["awaiting_data"] = "desc"
+    await callback.message.answer(
+        "📝 <b>Опишите ваш бизнес</b>\n\n"
+        "Расскажите в свободной форме:\n"
+        "• Чем занимаетесь\n"
+        "• Какие услуги / товары\n"
+        "• Частые вопросы клиентов\n"
+        "• Цены (если есть)\n\n"
+        "Чем подробнее — тем умнее бот 👇"
+    )
+    await callback.answer()
 
 
 @dp.callback_query(F.data.startswith("ob_"))
