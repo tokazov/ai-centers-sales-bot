@@ -2160,31 +2160,86 @@ async def on_guide_telegram(callback: types.CallbackQuery):
     bot_username = session.get("created_bot_username", "ваш_бот")
     await callback.message.answer(
         f"📱 <b>Подключение к Telegram</b>\n\n"
-        f"У вас 3 варианта:\n\n"
-        f"{'─' * 25}\n\n"
-        f"1️⃣ <b>Отдельный бот (самый простой)</b>\n"
-        f"Клиенты пишут напрямую @{bot_username}\n"
-        f"→ Просто отправляйте ссылку t.me/{bot_username}\n"
-        f"→ На сайт, в Instagram, на визитки\n\n"
-        f"{'─' * 25}\n\n"
-        f"2️⃣ <b>Бизнес-аккаунт (как живой сотрудник)</b>\n"
-        f"Бот отвечает <b>от имени вашего аккаунта</b>\n"
-        f"Клиент думает что общается с человеком!\n\n"
-        f"Как подключить:\n"
-        f"• Откройте <b>Настройки Telegram</b>\n"
-        f"• <b>Telegram Business</b> → <b>Chatbot</b>\n"
-        f"• Выберите @{bot_username}\n"
-        f"• Готово! Бот отвечает от вашего имени 🎉\n\n"
-        f"⚠️ Нужен Telegram Premium\n\n"
-        f"{'─' * 25}\n\n"
-        f"3️⃣ <b>Группа / канал</b>\n"
-        f"Бот отвечает в вашей группе\n\n"
-        f"Как подключить:\n"
-        f"• Добавьте @{bot_username} в группу\n"
-        f"• Сделайте его <b>администратором</b>\n"
-        f"• Бот будет отвечать на вопросы клиентов",
+        f"Выберите способ подключения @{bot_username}:",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🤖 Отдельный бот (самый простой)", callback_data="tg_standalone")],
+            [InlineKeyboardButton(text="💼 Бизнес-аккаунт (как сотрудник)", callback_data="tg_business")],
+            [InlineKeyboardButton(text="👥 Группа / канал", callback_data="tg_group")],
             [InlineKeyboardButton(text="◀️ Другие каналы", callback_data="guide_back")],
+        ]),
+    )
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "tg_standalone")
+async def on_tg_standalone(callback: types.CallbackQuery):
+    session = get_session(callback.from_user.id)
+    bot_username = session.get("created_bot_username", "ваш_бот")
+    await callback.message.answer(
+        f"🤖 <b>Отдельный бот</b>\n\n"
+        f"Самый простой способ — бот уже работает!\n\n"
+        f"<b>Ваша ссылка:</b>\n"
+        f"<code>https://t.me/{bot_username}</code>\n\n"
+        f"<b>Где разместить:</b>\n"
+        f"• 🌐 На сайте — кнопка «Написать в Telegram»\n"
+        f"• 📸 В Instagram bio\n"
+        f"• 💬 В WhatsApp статусе\n"
+        f"• 📧 В email подписи\n"
+        f"• 🖨 На визитках, флаерах, меню\n"
+        f"• 📋 В Google Maps / 2GIS\n\n"
+        f"Клиент нажимает ссылку → попадает в чат с ботом → AI отвечает мгновенно ✅",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text=f"🤖 Открыть @{bot_username}", url=f"https://t.me/{bot_username}")],
+            [InlineKeyboardButton(text="◀️ Назад", callback_data="guide_telegram")],
+        ]),
+    )
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "tg_business")
+async def on_tg_business(callback: types.CallbackQuery):
+    session = get_session(callback.from_user.id)
+    bot_username = session.get("created_bot_username", "ваш_бот")
+    await callback.message.answer(
+        f"💼 <b>Telegram Business аккаунт</b>\n\n"
+        f"Бот отвечает <b>от имени вашего личного аккаунта</b>.\n"
+        f"Клиент думает что общается с вами!\n\n"
+        f"<b>Как подключить:</b>\n\n"
+        f"1️⃣ Откройте <b>Настройки Telegram</b>\n"
+        f"2️⃣ <b>Telegram Business</b> → <b>Чат-боты</b>\n"
+        f"3️⃣ Выберите @{bot_username}\n"
+        f"4️⃣ Настройте кто получает автоответ:\n"
+        f"   • Все чаты\n"
+        f"   • Только новые контакты\n"
+        f"   • Выбранные чаты\n"
+        f"5️⃣ Готово! Бот отвечает от вашего имени 🎉\n\n"
+        f"⚠️ <b>Требуется Telegram Premium</b>\n\n"
+        f"💡 Вы видите все диалоги и можете подключиться в любой момент",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="◀️ Назад", callback_data="guide_telegram")],
+        ]),
+    )
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "tg_group")
+async def on_tg_group(callback: types.CallbackQuery):
+    session = get_session(callback.from_user.id)
+    bot_username = session.get("created_bot_username", "ваш_бот")
+    await callback.message.answer(
+        f"👥 <b>Бот в группе / канале</b>\n\n"
+        f"Бот отвечает на вопросы клиентов прямо в вашей группе.\n\n"
+        f"<b>Как подключить:</b>\n\n"
+        f"1️⃣ Откройте вашу группу в Telegram\n"
+        f"2️⃣ Нажмите на название группы → <b>Участники</b>\n"
+        f"3️⃣ <b>Добавить участника</b> → найдите @{bot_username}\n"
+        f"4️⃣ Сделайте бота <b>администратором</b>\n"
+        f"   (нужны права: читать и писать сообщения)\n"
+        f"5️⃣ Готово! Бот отвечает в группе 🎉\n\n"
+        f"💡 <b>Совет:</b> Создайте отдельную группу для клиентов.\n"
+        f"Бот будет отвечать на частые вопросы, а вы — подключаться по необходимости.",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="◀️ Назад", callback_data="guide_telegram")],
         ]),
     )
     await callback.answer()
