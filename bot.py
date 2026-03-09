@@ -2202,7 +2202,9 @@ async def on_guide_whatsapp(callback: types.CallbackQuery):
         f"Если у вас уже настроен WhatsApp Business API через Meta — просто дайте нам токен доступа. Подключим за 5 минут.\n\n"
         f"2️⃣ <b>Подключить через Wazzup24</b> (~$30/мес)\n"
         f"Самый простой способ. Регистрация за 2 минуты, не нужна верификация Meta. WhatsApp + Instagram в одном сервисе.\n\n"
-        f"3️⃣ <b>У меня только WhatsApp Business</b> (приложение)\n"
+        f"3️⃣ <b>Подключить через Twilio</b> (оплата за сообщение)\n"
+        f"Надёжная платформа. $0.005 за сообщение. Подходит для малого объёма или если уже пользуетесь Twilio.\n\n"
+        f"4️⃣ <b>У меня только WhatsApp Business</b> (приложение)\n"
         f"Поможем настроить Meta Business и подключить API. Занимает 1-3 дня на верификацию.\n\n"
         f"{'─' * 25}\n\n"
         f"💡 <b>Результат одинаковый:</b>\n"
@@ -2211,6 +2213,7 @@ async def on_guide_whatsapp(callback: types.CallbackQuery):
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="💼 У меня есть Meta Business", callback_data="wa_meta")],
             [InlineKeyboardButton(text="⚡ Подключить через Wazzup24", callback_data="wa_wazzup")],
+            [InlineKeyboardButton(text="📞 Подключить через Twilio", callback_data="wa_twilio")],
             [InlineKeyboardButton(text="📱 У меня только приложение", callback_data="wa_app_only")],
             [InlineKeyboardButton(text="◀️ Другие каналы", callback_data="guide_back")],
         ]),
@@ -2274,6 +2277,35 @@ async def on_wa_app_only(callback: types.CallbackQuery):
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="⚡ Быстрый (Wazzup24)", callback_data="wa_wazzup")],
             [InlineKeyboardButton(text="🆓 Бесплатный (Meta)", callback_data="wa_meta_setup")],
+            [InlineKeyboardButton(text="◀️ Назад", callback_data="guide_whatsapp")],
+        ]),
+    )
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "wa_twilio")
+async def on_wa_twilio(callback: types.CallbackQuery):
+    session = get_session(callback.from_user.id)
+    session["awaiting_twilio_token"] = True
+    await callback.message.answer(
+        "📞 <b>Подключение через Twilio</b>\n\n"
+        "Twilio — мировой лидер облачных коммуникаций. WhatsApp, SMS, звонки.\n\n"
+        "<b>Плюсы:</b>\n"
+        "✅ Оплата только за сообщения (~$0.005/шт)\n"
+        "✅ Бесплатный тестовый режим (sandbox)\n"
+        "✅ SMS + звонки в комплекте\n"
+        "✅ Работает по всему миру\n\n"
+        "<b>Пошагово:</b>\n\n"
+        "1️⃣ Зарегистрируйтесь на <b>twilio.com</b>\n"
+        "2️⃣ Console → Account Info → скопируйте:\n"
+        "   • <b>Account SID</b>\n"
+        "   • <b>Auth Token</b>\n"
+        "3️⃣ Активируйте WhatsApp Sandbox (для теста)\n"
+        "   или купите номер с WhatsApp (для продакшена)\n"
+        "4️⃣ Отправьте SID и Token сюда 👇\n\n"
+        "Формат: <code>account_sid | auth_token</code>",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🌐 Открыть Twilio", url="https://www.twilio.com/try-twilio")],
             [InlineKeyboardButton(text="◀️ Назад", callback_data="guide_whatsapp")],
         ]),
     )
