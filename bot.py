@@ -1617,6 +1617,43 @@ async def on_text(message: types.Message):
     
     # ── Awaiting bot token from BotFather ──
     if session.get("awaiting_bot_token"):
+        # Help request — connect to live support
+        help_words = {"помощь", "помоги", "help", "не получается", "не могу", "не понимаю", "сложно"}
+        if text.lower().strip().rstrip("!.?") in help_words or "помо" in text.lower():
+            user = message.from_user
+            biz_name = session.get("ob_biz_name", "Мой бизнес")
+            await message.answer(
+                "🆘 <b>Подключаем специалиста!</b>\n\n"
+                "Наш менеджер поможет создать бота за вас.\n"
+                "Обычно отвечаем в течение 5-10 минут.\n\n"
+                "А пока — вот подробная инструкция:\n\n"
+                "1. Откройте Telegram\n"
+                "2. В поиске введите <b>BotFather</b>\n"
+                "3. Нажмите на него → <b>Start</b>\n"
+                "4. Напишите <b>/newbot</b>\n"
+                "5. Он спросит имя — напишите название бизнеса\n"
+                "6. Он спросит username — придумайте уникальное, на конце <b>_bot</b>\n"
+                "7. Появится длинный код — это <b>токен</b>\n"
+                "8. Нажмите на него чтобы скопировать\n"
+                "9. Вставьте сюда 👇",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="🤖 Открыть @BotFather", url="https://t.me/BotFather")],
+                ]),
+            )
+            try:
+                await bot.send_message(ADMIN_ID,
+                    f"🆘 <b>НУЖНА ПОМОЩЬ!</b>\n\n"
+                    f"👤 {user.full_name}{(' (@' + user.username + ')') if user.username else ''} (ID: {user.id})\n"
+                    f"🏢 {biz_name}\n"
+                    f"📍 Этап: создание бота в BotFather\n\n"
+                    f"Клиент не может создать бота. Помогите!",
+                    reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                        [InlineKeyboardButton(text=f"✉️ Написать клиенту", url=f"tg://user?id={user.id}")],
+                    ]),
+                )
+            except: pass
+            return
+
         import re as _re2
         token_match = _re2.search(r'\d{8,}:[A-Za-z0-9_-]{30,}', text)
         if token_match:
@@ -2444,7 +2481,7 @@ async def on_ob_help_botfather(callback: types.CallbackQuery):
         "4. BotFather спросит username — придумайте уникальное имя, заканчивающееся на _bot\n"
         "5. Вы получите длинный токен — скопируйте его\n"
         "6. Вставьте токен прямо сюда, в этот чат\n\n"
-        "📹 Если не получается — напишите «помощь» и мы поможем!",
+        "📹 Если не получается — напишите «помощь» и мы подключим специалиста!",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="🤖 Открыть @BotFather", url="https://t.me/BotFather")],
         ]),
