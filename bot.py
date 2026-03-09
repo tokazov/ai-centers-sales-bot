@@ -1679,32 +1679,37 @@ async def on_text(message: types.Message):
                         f"✅ Бот уже запущен и готов общаться с клиентами!",
                     )
 
-                    # Message 2: Step-by-step guide
-                    ch = session.get("ob_channel", "telegram")
-                    guide_tg = (
-                        f"📱 <b>Шаг 1 — Проверьте бота</b>\n"
-                        f"Откройте @{bot_username} и напишите что-нибудь — проверьте, как он отвечает.\n\n"
-                        f"📱 <b>Шаг 2 — Подключите к вашему каналу</b>\n"
-                        f"• <b>В личных сообщениях:</b> Просто отправляйте ссылку t.me/{bot_username} клиентам\n"
-                        f"• <b>В группе:</b> Добавьте @{bot_username} в группу → дайте права Admin → бот будет отвечать автоматически\n"
-                        f"• <b>На сайте:</b> Вставьте виджет: <code>&lt;script src=\"https://aicenters.co/widget/{bot_username}\"&gt;&lt;/script&gt;</code>\n\n"
-                        f"📱 <b>Шаг 3 — Расскажите клиентам</b>\n"
-                        f"• Добавьте ссылку t.me/{bot_username} на сайт, в Instagram био, визитки\n"
-                        f"• Отправьте ссылку существующим клиентам\n"
-                        f"• Бот работает 24/7 — даже когда вы спите 😴\n\n"
-                        f"📱 <b>Шаг 4 — Доработки</b>\n"
-                        f"Хотите изменить ответы, добавить данные или настроить меню?\n"
-                        f"Просто напишите нам сюда — мы поможем!"
+                    # Message 2: Check your bot
+                    await message.answer(
+                        f"✅ <b>Шаг 1 — Проверьте бота</b>\n\n"
+                        f"Откройте @{bot_username} и напишите что-нибудь.\n"
+                        f"Проверьте, как AI отвечает клиентам.",
+                        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                            [InlineKeyboardButton(text=f"🤖 Открыть @{bot_username}", url=f"https://t.me/{bot_username}")],
+                        ]),
                     )
 
-                    guide_kb = InlineKeyboardMarkup(inline_keyboard=[
-                        [InlineKeyboardButton(text=f"🤖 Проверить @{bot_username}", url=f"https://t.me/{bot_username}")],
+                    # Message 3: Connection options
+                    connect_kb = InlineKeyboardMarkup(inline_keyboard=[
+                        [InlineKeyboardButton(text="📱 Telegram", callback_data="guide_telegram")],
+                        [InlineKeyboardButton(text="💬 WhatsApp", callback_data="guide_whatsapp")],
+                        [InlineKeyboardButton(text="🌐 Сайт", callback_data="guide_website")],
+                        [InlineKeyboardButton(text="📸 Instagram", callback_data="guide_instagram")],
                         [InlineKeyboardButton(text="📝 Доработать бота", callback_data="ob_customize_bot")],
                         [InlineKeyboardButton(text="📊 Статистика", callback_data="ob_bot_stats")],
                         [InlineKeyboardButton(text="🏠 Главное меню", callback_data="back_menu")],
                     ])
 
-                    await message.answer(guide_tg, reply_markup=guide_kb)
+                    await message.answer(
+                        f"⚡ <b>Шаг 2 — Подключите бота к вашим каналам</b>\n\n"
+                        f"Выберите куда хотите подключить @{bot_username}:\n\n"
+                        f"📱 <b>Telegram</b> — бот в группе, канале или бизнес-аккаунте\n"
+                        f"💬 <b>WhatsApp</b> — бот отвечает клиентам в WhatsApp\n"
+                        f"🌐 <b>Сайт</b> — виджет чата на вашем сайте\n"
+                        f"📸 <b>Instagram</b> — автоответы в Direct\n\n"
+                        f"Можно подключить сразу несколько! 👇",
+                        reply_markup=connect_kb,
+                    )
 
                     try:
                         await bot.send_message(ADMIN_ID,
@@ -2098,6 +2103,141 @@ async def on_ob_create_bot(callback: types.CallbackQuery):
 
 
 ENGINE_API_URL = os.getenv("ENGINE_API_URL", "https://ai-centers-dashboard-production.up.railway.app")
+
+@dp.callback_query(F.data == "guide_telegram")
+async def on_guide_telegram(callback: types.CallbackQuery):
+    session = get_session(callback.from_user.id)
+    bot_username = session.get("created_bot_username", "ваш_бот")
+    await callback.message.answer(
+        f"📱 <b>Подключение к Telegram</b>\n\n"
+        f"У вас 3 варианта:\n\n"
+        f"{'─' * 25}\n\n"
+        f"1️⃣ <b>Отдельный бот (самый простой)</b>\n"
+        f"Клиенты пишут напрямую @{bot_username}\n"
+        f"→ Просто отправляйте ссылку t.me/{bot_username}\n"
+        f"→ На сайт, в Instagram, на визитки\n\n"
+        f"{'─' * 25}\n\n"
+        f"2️⃣ <b>Бизнес-аккаунт (как живой сотрудник)</b>\n"
+        f"Бот отвечает <b>от имени вашего аккаунта</b>\n"
+        f"Клиент думает что общается с человеком!\n\n"
+        f"Как подключить:\n"
+        f"• Откройте <b>Настройки Telegram</b>\n"
+        f"• <b>Telegram Business</b> → <b>Chatbot</b>\n"
+        f"• Выберите @{bot_username}\n"
+        f"• Готово! Бот отвечает от вашего имени 🎉\n\n"
+        f"⚠️ Нужен Telegram Premium\n\n"
+        f"{'─' * 25}\n\n"
+        f"3️⃣ <b>Группа / канал</b>\n"
+        f"Бот отвечает в вашей группе\n\n"
+        f"Как подключить:\n"
+        f"• Добавьте @{bot_username} в группу\n"
+        f"• Сделайте его <b>администратором</b>\n"
+        f"• Бот будет отвечать на вопросы клиентов",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="◀️ Другие каналы", callback_data="guide_back")],
+        ]),
+    )
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "guide_whatsapp")
+async def on_guide_whatsapp(callback: types.CallbackQuery):
+    session = get_session(callback.from_user.id)
+    bot_username = session.get("created_bot_username", "ваш_бот")
+    await callback.message.answer(
+        f"💬 <b>Подключение к WhatsApp</b>\n\n"
+        f"Бот будет отвечать клиентам в WhatsApp — автоматически, 24/7.\n\n"
+        f"<b>Как подключить:</b>\n\n"
+        f"1️⃣ Вам нужен <b>WhatsApp Business</b> аккаунт\n"
+        f"   (скачайте WhatsApp Business из App Store / Google Play)\n\n"
+        f"2️⃣ Мы подключим бота через <b>WhatsApp Business API</b>\n"
+        f"   Напишите нам «подключить WhatsApp» — поможем настроить\n\n"
+        f"3️⃣ После подключения бот отвечает клиентам в WhatsApp\n"
+        f"   от имени вашего бизнес-номера\n\n"
+        f"{'─' * 25}\n\n"
+        f"💡 <b>Как работает:</b>\n"
+        f"Клиент пишет на ваш WhatsApp → AI отвечает мгновенно\n"
+        f"Вы видите все диалоги в WhatsApp Business\n"
+        f"Можете в любой момент подключиться и написать сами",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="💬 Подключить WhatsApp", callback_data="ob_send_custom_request")],
+            [InlineKeyboardButton(text="◀️ Другие каналы", callback_data="guide_back")],
+        ]),
+    )
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "guide_website")
+async def on_guide_website(callback: types.CallbackQuery):
+    session = get_session(callback.from_user.id)
+    bot_username = session.get("created_bot_username", "ваш_бот")
+    await callback.message.answer(
+        f"🌐 <b>Подключение к сайту</b>\n\n"
+        f"Чат-виджет в правом нижнем углу вашего сайта — клиенты пишут прямо на странице.\n\n"
+        f"<b>Как подключить (2 минуты):</b>\n\n"
+        f"1️⃣ Скопируйте этот код:\n\n"
+        f"<code>&lt;script\n"
+        f"  src=\"https://aicenters.co/widget.js\"\n"
+        f"  data-bot=\"{bot_username}\"\n"
+        f"  async&gt;\n"
+        f"&lt;/script&gt;</code>\n\n"
+        f"2️⃣ Вставьте перед <code>&lt;/body&gt;</code> на вашем сайте\n\n"
+        f"3️⃣ Готово! Виджет появится на всех страницах 🎉\n\n"
+        f"{'─' * 25}\n\n"
+        f"💡 <b>Нет доступа к коду сайта?</b>\n"
+        f"• <b>WordPress:</b> Вставьте в «Внешний вид → Виджеты → HTML»\n"
+        f"• <b>Tilda:</b> Блок T123 → HTML код\n"
+        f"• <b>Другое:</b> Напишите нам — поможем встроить",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="◀️ Другие каналы", callback_data="guide_back")],
+        ]),
+    )
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "guide_instagram")
+async def on_guide_instagram(callback: types.CallbackQuery):
+    session = get_session(callback.from_user.id)
+    await callback.message.answer(
+        f"📸 <b>Подключение к Instagram</b>\n\n"
+        f"Бот будет отвечать на сообщения в Instagram Direct автоматически.\n\n"
+        f"<b>Как подключить:</b>\n\n"
+        f"1️⃣ У вас должен быть <b>бизнес-аккаунт</b> в Instagram\n"
+        f"   (Настройки → Аккаунт → Переключить на бизнес)\n\n"
+        f"2️⃣ Привяжите Instagram к <b>Facebook Business</b> странице\n\n"
+        f"3️⃣ Напишите нам «подключить Instagram» — мы настроим\n"
+        f"   интеграцию через Instagram Graph API\n\n"
+        f"{'─' * 25}\n\n"
+        f"💡 <b>Как работает:</b>\n"
+        f"Клиент пишет в Direct → AI отвечает мгновенно\n"
+        f"Отвечает на вопросы о ценах, бронях, наличии\n"
+        f"Вы видите все диалоги в Instagram",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="📸 Подключить Instagram", callback_data="ob_send_custom_request")],
+            [InlineKeyboardButton(text="◀️ Другие каналы", callback_data="guide_back")],
+        ]),
+    )
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "guide_back")
+async def on_guide_back(callback: types.CallbackQuery):
+    session = get_session(callback.from_user.id)
+    bot_username = session.get("created_bot_username", "ваш_бот")
+    connect_kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📱 Telegram", callback_data="guide_telegram")],
+        [InlineKeyboardButton(text="💬 WhatsApp", callback_data="guide_whatsapp")],
+        [InlineKeyboardButton(text="🌐 Сайт", callback_data="guide_website")],
+        [InlineKeyboardButton(text="📸 Instagram", callback_data="guide_instagram")],
+        [InlineKeyboardButton(text="📝 Доработать бота", callback_data="ob_customize_bot")],
+        [InlineKeyboardButton(text="🏠 Главное меню", callback_data="back_menu")],
+    ])
+    await callback.message.answer(
+        f"⚡ <b>Куда подключить @{bot_username}?</b>",
+        reply_markup=connect_kb,
+    )
+    await callback.answer()
+
 
 @dp.callback_query(F.data == "ob_customize_bot")
 async def on_ob_customize(callback: types.CallbackQuery):
