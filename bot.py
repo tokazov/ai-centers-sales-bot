@@ -958,8 +958,8 @@ async def on_leads_select(callback: types.CallbackQuery):
 
     # Step 4 — Offer
     kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=t(lang, "btn_order_assistant"), callback_data="funnel_pricing")],
         [InlineKeyboardButton(text=t(lang, "btn_try_free"), callback_data="funnel_demo")],
-        [InlineKeyboardButton(text=t(lang, "btn_pricing"), callback_data="funnel_pricing")],
         [InlineKeyboardButton(text=t(lang, "btn_question"), callback_data="funnel_question")],
     ])
 

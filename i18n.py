@@ -134,8 +134,8 @@ I18N = {
         "leads_unknown": {"ru": "до 3 часов/день", "en": "up to 3 hours/day", "ka": "3 საათამდე/დღეში", "tr": "günde 3 saate kadar", "kk": "3 сағатқа дейін/күн", "uz": "kuniga 3 soatgacha"},
     },
     "offer": {
-        "ru": "⚡ <b>AI-сотрудник сэкономит вам {savings}</b>\n\nЗапустим за 5 минут. Первые <b>3 дня бесплатно</b>.\nНе подойдёт — просто отключите.\n\nЧто выберете?",
-        "en": "⚡ <b>AI employee will save you {savings}</b>\n\nLaunch in 5 minutes. First <b>3 days free</b>.\nDoesn't work out — just cancel.\n\nWhat will you choose?",
+        "ru": "⚡ <b>AI-сотрудник сэкономит вам {savings}</b>\n\nЗапустим за 5 минут. Не подойдёт — просто отключите.\n\nЧто выберете?",
+        "en": "⚡ <b>AI employee will save you {savings}</b>\n\nLaunch in 5 minutes. \nDoesn't work out — just cancel.\n\nWhat will you choose?",
         "ka": "⚡ <b>AI თანამშრომელი დაზოგავს {savings}</b>\n\nგაშვება 5 წუთში. პირველი <b>3 დღე უფასოდ</b>.\nარ მოგეწონათ — უბრალოდ გამორთეთ.\n\nრას აირჩევთ?",
         "tr": "⚡ <b>AI çalışan size {savings} kazandıracak</b>\n\n5 dakikada başlatın. İlk <b>3 gün ücretsiz</b>.\nİşe yaramazsa — iptal edin.\n\nNe seçersiniz?",
         "kk": "⚡ <b>AI қызметкер сізге {savings} үнемдейді</b>\n\n5 минутта іске қосамыз. Алғашқы <b>3 күн тегін</b>.\nСізге сәйкес келмесе — өшіріңіз.\n\nНе таңдайсыз?",
@@ -144,9 +144,14 @@ I18N = {
 
     # ─── Step 5: CTA buttons ───
     "btn_try_free": {
-        "ru": "🚀 Попробовать бесплатно (3 дня)", "en": "🚀 Try free (3 days)",
-        "ka": "🚀 სცადეთ უფასოდ (3 დღე)", "tr": "🚀 Ücretsiz deneyin (3 gün)",
-        "kk": "🚀 Тегін байқап көріңіз (3 күн)", "uz": "🚀 Bepul sinab ko'ring (3 kun)",
+        "ru": "🎯 Посмотреть демо", "en": "🎯 See demo",
+        "ka": "🎯 დემოს ნახვა", "tr": "🎯 Demoyu görün",
+        "kk": "🎯 Демо көру", "uz": "🎯 Demo ko'rish",
+    },
+    "btn_order_assistant": {
+        "ru": "🚀 Заказать AI-ассистента", "en": "🚀 Order AI Assistant",
+        "ka": "🚀 AI ასისტენტის შეკვეთა", "tr": "🚀 AI Asistan Sipariş Et",
+        "kk": "🚀 AI көмекшіге тапсырыс", "uz": "🚀 AI yordamchiga buyurtma",
     },
     "btn_pricing": {
         "ru": "💰 Посмотреть тарифы", "en": "💰 View pricing",
@@ -161,8 +166,8 @@ I18N = {
 
     # ─── Demo result ───
     "demo_intro": {
-        "ru": "🎉 <b>Отлично!</b>\n\nВот демо-бот — попробуйте как AI отвечает клиентам.\n\nА если у вас есть сайт — я могу создать бота <b>прямо сейчас</b>, обученного на вашем бизнесе. За 5 минут. Бесплатно.",
-        "en": "🎉 <b>Great!</b>\n\nHere's a demo bot — try how AI responds to customers.\n\nIf you have a website — I can create a bot <b>right now</b>, trained on your business. In 5 minutes. Free.",
+        "ru": "🎉 <b>Отлично!</b>\n\nВот демо-бот — попробуйте как AI отвечает клиентам.\n\nА если у вас есть сайт — я могу создать бота <b>прямо сейчас</b>, обученного на вашем бизнесе. За 5 минут.",
+        "en": "🎉 <b>Great!</b>\n\nHere's a demo bot — try how AI responds to customers.\n\nIf you have a website — I can create a bot <b>right now</b>, trained on your business. In 5 minutes.",
         "ka": "🎉 <b>შესანიშნავია!</b>\n\nაი დემო ბოტი — სცადეთ როგორ პასუხობს AI კლიენტებს.\n\nთუ საიტი გაქვთ — შემიძლია ბოტი <b>ახლავე</b> შევქმნა, თქვენს ბიზნესზე მორგებული. 5 წუთში. უფასოდ.",
         "tr": "🎉 <b>Harika!</b>\n\nİşte demo bot — AI'ın müşterilere nasıl cevap verdiğini deneyin.\n\nWeb siteniz varsa — işletmenize özel bir bot <b>hemen şimdi</b> oluşturabilirim. 5 dakikada. Ücretsiz.",
         "kk": "🎉 <b>Тамаша!</b>\n\nМіне демо-бот — AI клиенттерге қалай жауап беретінін байқап көріңіз.\n\nСайтыңыз бар ма? — <b>дәл қазір</b> сіздің бизнесіңізге бот жасай аламын. 5 минутта. Тегін.",
@@ -209,7 +214,7 @@ I18N = {
         "uz": "💡 Barcha tariflar: sozlash + birinchi oy. Istalgan vaqtda bekor qilish.",
     },
     "btn_try_free_short": {
-        "ru": "🆓 Сначала попробовать бесплатно", "en": "🆓 Try free first",
+        "ru": "🎯 Посмотреть демо", "en": "🎯 See demo first",
         "ka": "🆓 ჯერ უფასოდ სცადეთ", "tr": "🆓 Önce ücretsiz deneyin",
         "kk": "🆓 Алдымен тегін байқап көріңіз", "uz": "🆓 Avval bepul sinab ko'ring",
     },
@@ -261,7 +266,7 @@ I18N = {
 
     # ─── Objection handler ───
     "ask_question": {
-        "ru": "💬 <b>Задайте любой вопрос!</b>\n\nНапример:\n• Подойдёт ли для моего бизнеса?\n• Чем отличается от обычного чат-бота?\n• Как быстро настраивается?\n• Можно ли попробовать бесплатно?\n\nПросто напишите — я отвечу 👇",
+        "ru": "💬 <b>Задайте любой вопрос!</b>\n\nНапример:\n• Подойдёт ли для моего бизнеса?\n• Чем отличается от обычного чат-бота?\n• Как быстро настраивается?\n• Как подключить ассистента?\n\nПросто напишите — я отвечу 👇",
         "en": "💬 <b>Ask any question!</b>\n\nFor example:\n• Will it work for my business?\n• How is it different from a regular chatbot?\n• How fast is the setup?\n• Can I try it for free?\n\nJust type — I'll answer 👇",
         "ka": "💬 <b>დასვით ნებისმიერი კითხვა!</b>\n\nმაგალითად:\n• ჩემს ბიზნესს მოერგება?\n• რით განსხვავდება ჩვეულებრივი ჩატბოტისგან?\n• რამდენად სწრაფად ყენდება?\n• შეიძლება უფასოდ ვცადო?\n\nუბრალოდ დაწერეთ 👇",
         "tr": "💬 <b>Herhangi bir soru sorun!</b>\n\nÖrneğin:\n• İşletmem için uygun mu?\n• Normal chatbottan farkı ne?\n• Kurulum ne kadar sürer?\n• Ücretsiz deneyebilir miyim?\n\nYazmanız yeterli 👇",
