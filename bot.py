@@ -1210,6 +1210,7 @@ async def cmd_test_pay(message: types.Message):
 async def cmd_menu(message: types.Message):
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="✨ Создать AI-помощника", callback_data="create")],
+        [InlineKeyboardButton(text="⚙️ Управление ботом", callback_data="ob_manage_bot")],
         [InlineKeyboardButton(text="🖥 Computer Use (CRM, 1C, таблицы)", callback_data="computer_use")],
         [InlineKeyboardButton(text="🤖 Каталог агентов", web_app=WebAppInfo(url="https://aicenters.co/miniapp.html"))],
         [InlineKeyboardButton(text="🗣️ Голосовой AI-секретарь", callback_data="voice_ai")],
@@ -1441,6 +1442,7 @@ async def handle_cu_text(message: types.Message, session: dict) -> bool:
 async def on_back_menu(callback: types.CallbackQuery):
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="✨ Создать AI-помощника", callback_data="create")],
+        [InlineKeyboardButton(text="⚙️ Управление ботом", callback_data="ob_manage_bot")],
         [InlineKeyboardButton(text="🖥 Computer Use (CRM, 1C, таблицы)", callback_data="computer_use")],
         [InlineKeyboardButton(text="🤖 Каталог агентов", web_app=WebAppInfo(url="https://aicenters.co/miniapp.html"))],
         [InlineKeyboardButton(text="🗣️ Голосовой AI-секретарь", callback_data="voice_ai")],
@@ -2235,6 +2237,144 @@ async def on_guide_back(callback: types.CallbackQuery):
     await callback.message.answer(
         f"⚡ <b>Куда подключить @{bot_username}?</b>",
         reply_markup=connect_kb,
+    )
+    await callback.answer()
+
+
+# ══════════════════════════════════════════
+# BOT MANAGEMENT — post-creation help center
+# ══════════════════════════════════════════
+
+@dp.callback_query(F.data == "ob_manage_bot")
+async def on_manage_bot(callback: types.CallbackQuery):
+    session = get_session(callback.from_user.id)
+    bot_username = session.get("created_bot_username", "ваш бот")
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🧠 Обучить бота", callback_data="manage_train")],
+        [InlineKeyboardButton(text="✏️ Изменить ответы и стиль", callback_data="manage_edit")],
+        [InlineKeyboardButton(text="📊 Статистика", callback_data="ob_bot_stats")],
+        [InlineKeyboardButton(text="💰 Тариф и оплата", callback_data="manage_billing")],
+        [InlineKeyboardButton(text="🔌 Подключить каналы", callback_data="guide_back")],
+        [InlineKeyboardButton(text="❓ FAQ", callback_data="manage_faq")],
+        [InlineKeyboardButton(text="🏠 Главное меню", callback_data="back_menu")],
+    ])
+    await callback.message.answer(
+        f"⚙️ <b>Управление ботом @{bot_username}</b>\n\n"
+        f"Выберите что хотите сделать:",
+        reply_markup=kb,
+    )
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "manage_train")
+async def on_manage_train(callback: types.CallbackQuery):
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📎 Отправить ссылку на сайт", callback_data="ob_send_url")],
+        [InlineKeyboardButton(text="📄 Загрузить файл (PDF/фото)", callback_data="ob_send_price")],
+        [InlineKeyboardButton(text="✏️ Написать текстом", callback_data="ob_send_desc")],
+        [InlineKeyboardButton(text="◀️ Назад", callback_data="ob_manage_bot")],
+    ])
+    await callback.message.answer(
+        "🧠 <b>Обучение бота</b>\n\n"
+        "Бот учится на ваших данных. Чем больше информации — тем умнее ответы.\n\n"
+        "<b>Что можно отправить:</b>\n\n"
+        "📎 <b>Ссылка на сайт</b>\n"
+        "Бот прочитает сайт и выучит всю информацию\n\n"
+        "📄 <b>Файлы</b>\n"
+        "Прайс-лист, меню, каталог (PDF, фото, документы)\n\n"
+        "✏️ <b>Текст</b>\n"
+        "Напишите FAQ, описание услуг, частые вопросы\n\n"
+        "💬 <b>Примеры диалогов</b>\n"
+        "Скопируйте реальные переписки с клиентами — бот научится отвечать так же\n\n"
+        "📸 <b>Фото</b>\n"
+        "Фото меню, витрины, прайса — бот распознает текст\n\n"
+        "💡 Можно отправлять данные в любой момент — бот дообучается автоматически!",
+        reply_markup=kb,
+    )
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "manage_edit")
+async def on_manage_edit(callback: types.CallbackQuery):
+    session = get_session(callback.from_user.id)
+    session["awaiting_data"] = "edit_request"
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="◀️ Назад", callback_data="ob_manage_bot")],
+    ])
+    await callback.message.answer(
+        "✏️ <b>Изменить бота</b>\n\n"
+        "Напишите что хотите изменить. Примеры:\n\n"
+        "💬 <b>Стиль общения:</b>\n"
+        "«Пусть бот обращается на вы и говорит формально»\n"
+        "«Добавь эмодзи и неформальный тон»\n\n"
+        "📝 <b>Ответы:</b>\n"
+        "«На вопрос о доставке отвечай: доставка бесплатная от 50 лари»\n"
+        "«Не говори клиентам про скидки без спроса»\n\n"
+        "🔧 <b>Функции:</b>\n"
+        "«Добавь кнопку "Позвонить нам"»\n"
+        "«Спрашивай номер телефона при заказе»\n"
+        "«Отправляй меню когда спрашивают про еду»\n\n"
+        "Просто опишите — мы обновим бота 👇",
+        reply_markup=kb,
+    )
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "manage_billing")
+async def on_manage_billing(callback: types.CallbackQuery):
+    uid = callback.from_user.id
+    session = get_session(uid)
+    current_plan = paid_users.get(uid, {}).get("plan", "нет")
+    plan_names = {"starter": "Starter ($19/мес)", "pro": "Pro ($49/мес)", "business": "Business ($79/мес)", "week": "Неделя", "month": "Месяц"}
+    plan_display = plan_names.get(current_plan, current_plan)
+
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="⬆️ Улучшить тариф", callback_data="funnel_pricing")],
+        [InlineKeyboardButton(text="◀️ Назад", callback_data="ob_manage_bot")],
+    ])
+    await callback.message.answer(
+        f"💰 <b>Тариф и оплата</b>\n\n"
+        f"📦 Текущий план: <b>{plan_display}</b>\n\n"
+        f"<b>Что входит в тарифы:</b>\n\n"
+        f"⭐ <b>Starter</b> — $149 + $19/мес\n"
+        f"• 1 AI-бот, Telegram + WhatsApp\n"
+        f"• Обучение на ваших данных\n\n"
+        f"🚀 <b>Pro</b> — $299 + $49/мес\n"
+        f"• 3 AI-бота, CRM интеграция\n"
+        f"• Приоритетная поддержка\n\n"
+        f"🏢 <b>Business</b> — $499 + $79/мес\n"
+        f"• 10 AI-ботов, API + webhook\n"
+        f"• Персональный менеджер\n\n"
+        f"💳 Оплата: Telegram Stars, криптовалюта, банковский перевод",
+        reply_markup=kb,
+    )
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "manage_faq")
+async def on_manage_faq(callback: types.CallbackQuery):
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="◀️ Назад", callback_data="ob_manage_bot")],
+    ])
+    await callback.message.answer(
+        "❓ <b>Частые вопросы</b>\n\n"
+        "<b>Бот не отвечает. Что делать?</b>\n"
+        "→ Убедитесь что бот запущен (напишите ему /start). Если не помогло — напишите нам.\n\n"
+        "<b>Можно изменить ответы бота?</b>\n"
+        "→ Да! Отправьте новые данные или опишите что изменить — мы обновим.\n\n"
+        "<b>Бот отвечает неправильно. Как исправить?</b>\n"
+        "→ Скриншот неправильного ответа + как должно быть → отправьте нам.\n\n"
+        "<b>Можно подключить несколько каналов?</b>\n"
+        "→ Да! Telegram + WhatsApp + сайт + Instagram — всё одновременно.\n\n"
+        "<b>Клиенты видят что это бот?</b>\n"
+        "→ Зависит от подключения. Через Telegram Business — клиент думает что пишет вам лично.\n\n"
+        "<b>Как отменить подписку?</b>\n"
+        "→ Напишите нам «отмена» — отключим в тот же день.\n\n"
+        "<b>Бот работает на каких языках?</b>\n"
+        "→ На всех! AI автоматически определяет язык клиента и отвечает на нём.\n\n"
+        "<b>Мои данные в безопасности?</b>\n"
+        "→ Да. Данные хранятся зашифрованно. Доступ только у вас.",
+        reply_markup=kb,
     )
     await callback.answer()
 
