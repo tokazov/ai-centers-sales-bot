@@ -1613,6 +1613,115 @@ async def on_text(message: types.Message):
             )
             return
     
+    # ── Awaiting bot token from BotFather ──
+    if session.get("awaiting_bot_token"):
+        import re as _re2
+        token_match = _re2.search(r'\d{8,}:[A-Za-z0-9_-]{30,}', text)
+        if token_match:
+            bot_token = token_match.group(0)
+            session["awaiting_bot_token"] = False
+            session["bot_token"] = bot_token
+
+            await message.answer("⏳ <b>Проверяю токен и создаю бота...</b>")
+
+            # Call engine API to create the bot
+            biz_name = session.get("ob_biz_name", "Мой бизнес")
+            niche = session.get("ob_niche_name", "бизнес")
+            tasks = session.get("ob_tasks", "")
+            training = session.get("ob_training_data", [])
+            knowledge = "\n".join([d.get("text", "") for d in training])
+
+            try:
+                import aiohttp
+                # First register/login user to get JWT
+                async with aiohttp.ClientSession() as http:
+                    # Try auto-setup with URL if available, otherwise create from text
+                    url_data = [d["text"] for d in training if d.get("type") == "url"]
+                    
+                    if url_data:
+                        payload = {
+                            "bot_token": bot_token,
+                            "url": url_data[0],
+                            "business_type": niche,
+                            "language": session.get("lang", "ru"),
+                        }
+                        endpoint = f"{ENGINE_API_URL}/bots/auto-setup"
+                    else:
+                        payload = {
+                            "bot_token": bot_token,
+                            "name": biz_name,
+                            "description": f"{niche}. {tasks}",
+                            "tone": "дружелюбный, профессиональный",
+                            "knowledge_base": f"Бизнес: {biz_name}\nНиша: {niche}\nЗадачи: {tasks}\n\n{knowledge}",
+                        }
+                        endpoint = f"{ENGINE_API_URL}/bots"
+
+                    resp = await http.post(
+                        endpoint,
+                        json=payload,
+                        headers={"X-Internal-Key": PLATFORM_API_KEY},
+                        timeout=aiohttp.ClientTimeout(total=60),
+                    )
+                    result = await resp.json()
+
+                if resp.status in (200, 201):
+                    bot_username = result.get("bot_username", "")
+                    kb = InlineKeyboardMarkup(inline_keyboard=[
+                        [InlineKeyboardButton(text=f"🤖 Открыть @{bot_username}", url=f"https://t.me/{bot_username}")] if bot_username else [],
+                        [InlineKeyboardButton(text="🏠 Главное меню", callback_data="back_menu")],
+                    ])
+                    await message.answer(
+                        f"🎉 <b>Ваш AI-ассистент создан!</b>\n\n"
+                        f"🤖 Бот: @{bot_username}\n"
+                        f"🏢 {biz_name}\n"
+                        f"📱 Уже работает и готов общаться с клиентами!\n\n"
+                        f"<b>Что дальше:</b>\n"
+                        f"• Добавьте бота в группу или канал\n"
+                        f"• Поделитесь ссылкой t.me/{bot_username} с клиентами\n"
+                        f"• Пишите сюда, если нужны доработки",
+                        reply_markup=kb,
+                    )
+
+                    try:
+                        await bot.send_message(ADMIN_ID,
+                            f"✅ <b>БОТ СОЗДАН!</b>\n"
+                            f"👤 {message.from_user.full_name}\n"
+                            f"🤖 @{bot_username}\n"
+                            f"🏢 {biz_name}")
+                    except: pass
+                else:
+                    error = result.get("detail", "Unknown error")
+                    await message.answer(
+                        f"❌ Ошибка: {error}\n\n"
+                        f"Попробуйте другой токен или напишите «помощь».",
+                        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                            [InlineKeyboardButton(text="🤖 Открыть @BotFather", url="https://t.me/BotFather")],
+                            [InlineKeyboardButton(text="🏠 Главное меню", callback_data="back_menu")],
+                        ]),
+                    )
+                    session["awaiting_bot_token"] = True  # Let them retry
+            except Exception as e:
+                logger.error(f"Engine API error: {e}")
+                await message.answer(
+                    f"⚠️ Сервис временно недоступен. Мы сохранили ваши данные и создадим бота в ближайшее время.\n\n"
+                    f"Токен получен ✅",
+                    reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                        [InlineKeyboardButton(text="🏠 Главное меню", callback_data="back_menu")],
+                    ]),
+                )
+                try:
+                    await bot.send_message(ADMIN_ID,
+                        f"⚠️ ENGINE API FAIL\n{message.from_user.full_name}\nToken: {bot_token[:20]}...\nError: {e}")
+                except: pass
+            return
+        else:
+            await message.answer(
+                "🤔 Это не похоже на токен бота.\n\n"
+                "Токен выглядит так:\n<code>1234567890:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw</code>\n\n"
+                "Скопируйте его из @BotFather и отправьте сюда.",
+            )
+            return
+
     # ── Awaiting training data (post-onboarding) ──
     if session.get("awaiting_data"):
         data_type = session.get("awaiting_data", True)
@@ -1924,37 +2033,64 @@ async def on_ob_create_bot(callback: types.CallbackQuery):
     data_count = len(session.get("ob_training_data", []))
     channel_names = {"telegram": "Telegram", "whatsapp": "WhatsApp", "website": "Сайт", "all": "Все каналы"}
 
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🏠 Главное меню", callback_data="back_menu")],
-    ])
-
+    # Step 1: Ask to create bot in BotFather
     await callback.message.edit_text(
-        f"🚀 <b>Создаём вашего AI-ассистента!</b>\n\n"
+        f"🚀 <b>Отлично! Создаём бота.</b>\n\n"
         f"📊 <b>Параметры:</b>\n"
         f"• 🏢 {biz_name} ({niche})\n"
-        f"• 📝 {tasks[:150]}\n"
+        f"• 📝 {tasks[:100]}\n"
         f"• 📱 {channel_names.get(ch, ch)}\n"
-        f"• 📎 Материалов загружено: {data_count}\n\n"
-        f"⏱ <b>Бот будет готов в течение 24 часов.</b>\n"
-        f"Мы пришлём уведомление сюда, когда всё будет настроено.\n\n"
-        f"💬 Есть вопросы? Просто напишите!",
-        reply_markup=kb,
+        f"• 📎 Материалов: {data_count}\n\n"
+        f"{'─' * 25}\n\n"
+        f"📱 <b>Теперь создайте бота в Telegram:</b>\n\n"
+        f"1️⃣ Откройте @BotFather\n"
+        f"2️⃣ Отправьте /newbot\n"
+        f"3️⃣ Введите имя бота (например: <i>{biz_name}</i>)\n"
+        f"4️⃣ Введите username (например: <i>{biz_name.lower().replace(' ', '_')}_bot</i>)\n"
+        f"5️⃣ <b>Скопируйте токен</b> и отправьте его сюда 👇\n\n"
+        f"Токен выглядит так:\n<code>1234567890:AAHxxxxx...</code>",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🤖 Открыть @BotFather", url="https://t.me/BotFather")],
+            [InlineKeyboardButton(text="❓ Не получается", callback_data="ob_help_botfather")],
+        ]),
     )
     await callback.answer()
 
-    # Final admin notification
+    session["awaiting_bot_token"] = True
+
+    # Notify admin
     user = callback.from_user
     training = session.get("ob_training_data", [])
     data_summary = "\n".join([f"  {d['type']}: {d['text'][:200]}" for d in training[:5]])
     try:
         await bot.send_message(ADMIN_ID,
-            f"🤖 <b>СОЗДАТЬ БОТА!</b>\n\n"
+            f"🤖 <b>КЛИЕНТ СОЗДАЁТ БОТА!</b>\n\n"
             f"👤 {user.full_name}{(' (@' + user.username + ')') if user.username else ''}\n"
             f"🏢 {biz_name} ({niche})\n"
             f"📝 {tasks[:300]}\n"
             f"📱 {channel_names.get(ch, ch)}\n"
             f"📎 Данные ({data_count}):\n{data_summary}")
     except: pass
+
+
+ENGINE_API_URL = os.getenv("ENGINE_API_URL", "https://ai-centers-dashboard-production.up.railway.app")
+
+@dp.callback_query(F.data == "ob_help_botfather")
+async def on_ob_help_botfather(callback: types.CallbackQuery):
+    await callback.message.answer(
+        "🆘 <b>Инструкция по созданию бота:</b>\n\n"
+        "1. Откройте Telegram и найдите @BotFather\n"
+        "2. Нажмите Start или отправьте /newbot\n"
+        "3. BotFather спросит имя — введите название вашего бизнеса\n"
+        "4. BotFather спросит username — придумайте уникальное имя, заканчивающееся на _bot\n"
+        "5. Вы получите длинный токен — скопируйте его\n"
+        "6. Вставьте токен прямо сюда, в этот чат\n\n"
+        "📹 Если не получается — напишите «помощь» и мы поможем!",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🤖 Открыть @BotFather", url="https://t.me/BotFather")],
+        ]),
+    )
+    await callback.answer()
 
 
 @dp.callback_query(F.data == "ob_send_url")
