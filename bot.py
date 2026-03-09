@@ -2278,20 +2278,82 @@ async def on_guide_whatsapp(callback: types.CallbackQuery):
 
 @dp.callback_query(F.data == "wa_meta")
 async def on_wa_meta(callback: types.CallbackQuery):
+    await callback.message.answer(
+        "💼 <b>Подключение через Meta Business API</b>\n\n"
+        "Бесплатно. 1000 сообщений/мес включены.\n\n"
+        "Выберите шаг:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="1️⃣ Где найти API Setup", callback_data="meta_step1")],
+            [InlineKeyboardButton(text="2️⃣ Получить токен", callback_data="meta_step2")],
+            [InlineKeyboardButton(text="3️⃣ Отправить данные нам", callback_data="meta_step3")],
+            [InlineKeyboardButton(text="◀️ Назад", callback_data="guide_whatsapp")],
+        ]),
+    )
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "meta_step1")
+async def on_meta_step1(callback: types.CallbackQuery):
+    await callback.message.answer(
+        "1️⃣ <b>Где найти WhatsApp API Setup</b>\n\n"
+        "1. Откройте <b>developers.facebook.com</b>\n"
+        "2. Войдите в аккаунт Facebook\n"
+        "3. Перейдите в <b>My Apps</b> (Мои приложения)\n"
+        "4. Выберите ваше приложение (или создайте новое → тип «Business»)\n"
+        "5. В левом меню: <b>WhatsApp</b> → <b>API Setup</b>\n\n"
+        "Здесь вы увидите:\n"
+        "• <b>Temporary Access Token</b> (временный — на 24 часа)\n"
+        "• <b>Phone Number ID</b>\n"
+        "• <b>WhatsApp Business Account ID</b>",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🌐 Открыть Meta Developers", url="https://developers.facebook.com/apps/")],
+            [InlineKeyboardButton(text="▶️ Дальше: получить токен", callback_data="meta_step2")],
+            [InlineKeyboardButton(text="◀️ Назад", callback_data="wa_meta")],
+        ]),
+    )
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "meta_step2")
+async def on_meta_step2(callback: types.CallbackQuery):
+    await callback.message.answer(
+        "2️⃣ <b>Получение постоянного токена</b>\n\n"
+        "⚠️ Временный токен истекает через 24 часа. Нужен постоянный:\n\n"
+        "1. В Meta Developers → ваше приложение\n"
+        "2. <b>Business Settings</b> → <b>System Users</b>\n"
+        "3. <b>Add System User</b> → имя: «AI Bot» → роль: <b>Admin</b>\n"
+        "4. Нажмите <b>Generate New Token</b>\n"
+        "5. Выберите приложение\n"
+        "6. Включите разрешения:\n"
+        "   ✅ <b>whatsapp_business_messaging</b>\n"
+        "   ✅ <b>whatsapp_business_management</b>\n"
+        "7. Нажмите <b>Generate Token</b>\n"
+        "8. <b>Скопируйте токен!</b> Он показывается один раз!\n\n"
+        "Также скопируйте <b>Phone Number ID</b> из WhatsApp → API Setup.",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="▶️ Дальше: отправить нам", callback_data="meta_step3")],
+            [InlineKeyboardButton(text="◀️ Назад", callback_data="wa_meta")],
+        ]),
+    )
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "meta_step3")
+async def on_meta_step3(callback: types.CallbackQuery):
     session = get_session(callback.from_user.id)
     session["awaiting_wa_token"] = True
     await callback.message.answer(
-        "💼 <b>Подключение через Meta Business API</b>\n\n"
-        "Отлично! Это самый быстрый и бесплатный способ.\n\n"
-        "<b>Нам нужны 2 вещи:</b>\n\n"
-        "1️⃣ <b>Постоянный токен доступа</b>\n"
-        "Meta Business Suite → Настройки → WhatsApp → API Setup → Permanent Token\n\n"
-        "2️⃣ <b>Phone Number ID</b>\n"
-        "Там же, под номером телефона\n\n"
-        "Отправьте оба значения сюда 👇\n"
-        "Формат: <code>токен | phone_number_id</code>",
+        "3️⃣ <b>Отправьте данные</b>\n\n"
+        "Пришлите <b>два значения</b> в одном сообщении:\n\n"
+        "<code>токен | phone_number_id</code>\n\n"
+        "Например:\n"
+        "<code>EAABsbCS1iHg... | 1234567890</code>\n\n"
+        "Мы автоматически:\n"
+        "✅ Подключим ваш WhatsApp к AI-боту\n"
+        "✅ Настроим webhook\n"
+        "✅ Отправим тестовое сообщение для проверки",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="◀️ Назад", callback_data="guide_whatsapp")],
+            [InlineKeyboardButton(text="◀️ Назад", callback_data="meta_step2")],
         ]),
     )
     await callback.answer()
@@ -2301,17 +2363,123 @@ async def on_wa_meta(callback: types.CallbackQuery):
 async def on_wa_wazzup(callback: types.CallbackQuery):
     await callback.message.answer(
         "⚡ <b>Подключение через Wazzup24</b>\n\n"
-        "Wazzup24 — сервис-посредник. Не нужна верификация Meta, подключение за 5 минут.\n\n"
-        "<b>Пошагово:</b>\n\n"
-        "1️⃣ Зайдите на <b>wazzup24.com</b> → Регистрация\n"
-        "2️⃣ Подключите ваш WhatsApp номер (QR-код)\n"
-        "3️⃣ Перейдите в Настройки → API → скопируйте <b>API Key</b>\n"
-        "4️⃣ Отправьте API Key сюда 👇\n\n"
-        "💰 Стоимость: ~$30/мес (включает WhatsApp + Instagram)\n\n"
-        "🎁 <b>Бонус:</b> Через Wazzup24 можно сразу подключить и Instagram!",
+        "Wazzup24 подключает WhatsApp и Instagram к нашему AI без верификации Meta.\n\n"
+        "💰 Стоимость: ~$30/мес\n"
+        "🎁 WhatsApp + Instagram в одном сервисе\n\n"
+        "Выберите шаг:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="1️⃣ Регистрация на Wazzup24", callback_data="wz_step1")],
+            [InlineKeyboardButton(text="2️⃣ Подключение WhatsApp", callback_data="wz_step2")],
+            [InlineKeyboardButton(text="3️⃣ Подключение Instagram", callback_data="wz_step3")],
+            [InlineKeyboardButton(text="4️⃣ Получить API Key", callback_data="wz_step4")],
+            [InlineKeyboardButton(text="5️⃣ Отправить API Key нам", callback_data="wz_step5")],
+            [InlineKeyboardButton(text="◀️ Назад", callback_data="guide_whatsapp")],
+        ]),
+    )
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "wz_step1")
+async def on_wz_step1(callback: types.CallbackQuery):
+    await callback.message.answer(
+        "1️⃣ <b>Регистрация на Wazzup24</b>\n\n"
+        "1. Откройте <b>wazzup24.com</b>\n"
+        "2. Нажмите <b>«Попробовать бесплатно»</b> или <b>«Регистрация»</b>\n"
+        "3. Введите email и пароль\n"
+        "4. Подтвердите email (придёт письмо)\n"
+        "5. Войдите в личный кабинет ✅\n\n"
+        "💡 Есть бесплатный пробный период — можно сначала протестировать!",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="🌐 Открыть Wazzup24", url="https://wazzup24.com")],
-            [InlineKeyboardButton(text="◀️ Назад", callback_data="guide_whatsapp")],
+            [InlineKeyboardButton(text="▶️ Дальше: подключить WhatsApp", callback_data="wz_step2")],
+            [InlineKeyboardButton(text="◀️ Назад", callback_data="wa_wazzup")],
+        ]),
+    )
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "wz_step2")
+async def on_wz_step2(callback: types.CallbackQuery):
+    await callback.message.answer(
+        "2️⃣ <b>Подключение WhatsApp</b>\n\n"
+        "1. В личном кабинете Wazzup24 нажмите <b>«Каналы»</b>\n"
+        "2. Нажмите <b>«+ Добавить канал»</b>\n"
+        "3. Выберите <b>«WhatsApp»</b>\n"
+        "4. На экране появится <b>QR-код</b>\n"
+        "5. Откройте WhatsApp на телефоне:\n"
+        "   • <b>Android:</b> ⋮ меню → Связанные устройства → Привязать устройство\n"
+        "   • <b>iPhone:</b> Настройки → Связанные устройства → Привязать устройство\n"
+        "6. Наведите камеру на QR-код\n"
+        "7. Подождите 10-30 секунд — статус станет <b>«Активен» ✅</b>\n\n"
+        "⚠️ <b>Важно:</b> Телефон с WhatsApp должен быть подключён к интернету.\n"
+        "Если связь потеряется — зайдите в Wazzup и пересканируйте QR.",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="▶️ Дальше: подключить Instagram", callback_data="wz_step3")],
+            [InlineKeyboardButton(text="⏭ Пропустить Instagram", callback_data="wz_step4")],
+            [InlineKeyboardButton(text="◀️ Назад", callback_data="wa_wazzup")],
+        ]),
+    )
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "wz_step3")
+async def on_wz_step3(callback: types.CallbackQuery):
+    await callback.message.answer(
+        "3️⃣ <b>Подключение Instagram</b>\n\n"
+        "1. В Wazzup24 → <b>«Каналы»</b> → <b>«+ Добавить канал»</b>\n"
+        "2. Выберите <b>«Instagram»</b>\n"
+        "3. Нажмите <b>«Войти через Facebook»</b>\n"
+        "4. Авторизуйтесь в Facebook\n"
+        "5. Выберите <b>Facebook Page</b>, привязанную к вашему Instagram\n"
+        "6. Дайте все запрашиваемые разрешения\n"
+        "7. Статус станет <b>«Активен» ✅</b>\n\n"
+        "⚠️ <b>Для Instagram нужно:</b>\n"
+        "• Бизнес-аккаунт Instagram (не личный)\n"
+        "• Привязка к Facebook Page\n\n"
+        "Если у вас личный аккаунт — переключите:\n"
+        "Instagram → Настройки → Аккаунт → Переключить на бизнес",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="▶️ Дальше: получить API Key", callback_data="wz_step4")],
+            [InlineKeyboardButton(text="◀️ Назад", callback_data="wa_wazzup")],
+        ]),
+    )
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "wz_step4")
+async def on_wz_step4(callback: types.CallbackQuery):
+    await callback.message.answer(
+        "4️⃣ <b>Получение API Key</b>\n\n"
+        "1. В Wazzup24 откройте <b>«Настройки»</b> (⚙️ иконка)\n"
+        "2. Перейдите в раздел <b>«API»</b> или <b>«Интеграции»</b>\n"
+        "3. Нажмите <b>«Создать API Key»</b> (или он уже создан)\n"
+        "4. Скопируйте ключ — это длинная строка букв и цифр\n\n"
+        "Выглядит примерно так:\n"
+        "<code>a1b2c3d4e5f6g7h8i9j0...</code>\n\n"
+        "💡 <b>Не делитесь этим ключом ни с кем кроме нас!</b>",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="▶️ Дальше: отправить нам", callback_data="wz_step5")],
+            [InlineKeyboardButton(text="◀️ Назад", callback_data="wa_wazzup")],
+        ]),
+    )
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "wz_step5")
+async def on_wz_step5(callback: types.CallbackQuery):
+    session = get_session(callback.from_user.id)
+    session["awaiting_wazzup_key"] = True
+    await callback.message.answer(
+        "5️⃣ <b>Отправьте API Key</b>\n\n"
+        "Вставьте скопированный API Key прямо сюда 👇\n\n"
+        "Мы автоматически:\n"
+        "✅ Подключим ваш WhatsApp к AI-боту\n"
+        "✅ Подключим Instagram (если добавили)\n"
+        "✅ Настроим webhook для получения сообщений\n"
+        "✅ Протестируем и пришлём подтверждение\n\n"
+        "Просто вставьте ключ:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="◀️ Назад", callback_data="wz_step4")],
         ]),
     )
     await callback.answer()
@@ -2340,28 +2508,104 @@ async def on_wa_app_only(callback: types.CallbackQuery):
 
 @dp.callback_query(F.data == "wa_twilio")
 async def on_wa_twilio(callback: types.CallbackQuery):
+    await callback.message.answer(
+        "📞 <b>Подключение через Twilio</b>\n\n"
+        "Twilio — мировой лидер облачных коммуникаций.\n"
+        "Оплата за сообщение (~$0.005). Бонус: SMS + звонки.\n\n"
+        "Выберите шаг:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="1️⃣ Регистрация на Twilio", callback_data="tw_step1")],
+            [InlineKeyboardButton(text="2️⃣ Активировать WhatsApp", callback_data="tw_step2")],
+            [InlineKeyboardButton(text="3️⃣ Получить SID и Token", callback_data="tw_step3")],
+            [InlineKeyboardButton(text="4️⃣ Отправить данные нам", callback_data="tw_step4")],
+            [InlineKeyboardButton(text="◀️ Назад", callback_data="guide_whatsapp")],
+        ]),
+    )
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "tw_step1")
+async def on_tw_step1(callback: types.CallbackQuery):
+    await callback.message.answer(
+        "1️⃣ <b>Регистрация на Twilio</b>\n\n"
+        "1. Откройте <b>twilio.com</b>\n"
+        "2. Нажмите <b>«Sign Up»</b> или <b>«Try for Free»</b>\n"
+        "3. Введите email, имя, пароль\n"
+        "4. Подтвердите email\n"
+        "5. Подтвердите номер телефона (SMS код)\n"
+        "6. На вопрос «What do you want to do?» выберите:\n"
+        "   <b>Send WhatsApp messages</b>\n\n"
+        "💡 Twilio даёт $15 бесплатного кредита для тестов!",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🌐 Открыть Twilio", url="https://www.twilio.com/try-twilio")],
+            [InlineKeyboardButton(text="▶️ Дальше: WhatsApp", callback_data="tw_step2")],
+            [InlineKeyboardButton(text="◀️ Назад", callback_data="wa_twilio")],
+        ]),
+    )
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "tw_step2")
+async def on_tw_step2(callback: types.CallbackQuery):
+    await callback.message.answer(
+        "2️⃣ <b>Активация WhatsApp в Twilio</b>\n\n"
+        "<b>Для тестирования (бесплатно):</b>\n"
+        "1. Console → Messaging → Try it Out → <b>Send a WhatsApp message</b>\n"
+        "2. Twilio даст номер-sandbox\n"
+        "3. Отправьте код на этот номер с вашего WhatsApp\n"
+        "4. Sandbox активен ✅\n\n"
+        "<b>Для продакшена:</b>\n"
+        "1. Console → Messaging → Senders → <b>WhatsApp Senders</b>\n"
+        "2. <b>Add WhatsApp Sender</b>\n"
+        "3. Подключите ваш бизнес-номер\n"
+        "4. Пройдите верификацию Meta (через Twilio — проще!)\n"
+        "5. Номер активен ✅\n\n"
+        "💡 Рекомендуем сначала протестировать на sandbox, потом перейти на продакшен.",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="▶️ Дальше: получить данные", callback_data="tw_step3")],
+            [InlineKeyboardButton(text="◀️ Назад", callback_data="wa_twilio")],
+        ]),
+    )
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "tw_step3")
+async def on_tw_step3(callback: types.CallbackQuery):
+    await callback.message.answer(
+        "3️⃣ <b>Получение Account SID и Auth Token</b>\n\n"
+        "1. Откройте <b>Twilio Console</b> (console.twilio.com)\n"
+        "2. На главной странице вы увидите блок <b>«Account Info»</b>\n"
+        "3. Скопируйте:\n"
+        "   • <b>Account SID</b> — начинается с AC...\n"
+        "   • <b>Auth Token</b> — нажмите «Show» чтобы увидеть\n\n"
+        "Выглядит так:\n"
+        "<code>AC1234567890abcdef...</code>\n"
+        "<code>abcdef1234567890...</code>\n\n"
+        "💡 <b>Не делитесь этими данными ни с кем кроме нас!</b>",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="▶️ Дальше: отправить нам", callback_data="tw_step4")],
+            [InlineKeyboardButton(text="◀️ Назад", callback_data="wa_twilio")],
+        ]),
+    )
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "tw_step4")
+async def on_tw_step4(callback: types.CallbackQuery):
     session = get_session(callback.from_user.id)
     session["awaiting_twilio_token"] = True
     await callback.message.answer(
-        "📞 <b>Подключение через Twilio</b>\n\n"
-        "Twilio — мировой лидер облачных коммуникаций. WhatsApp, SMS, звонки.\n\n"
-        "<b>Плюсы:</b>\n"
-        "✅ Оплата только за сообщения (~$0.005/шт)\n"
-        "✅ Бесплатный тестовый режим (sandbox)\n"
-        "✅ SMS + звонки в комплекте\n"
-        "✅ Работает по всему миру\n\n"
-        "<b>Пошагово:</b>\n\n"
-        "1️⃣ Зарегистрируйтесь на <b>twilio.com</b>\n"
-        "2️⃣ Console → Account Info → скопируйте:\n"
-        "   • <b>Account SID</b>\n"
-        "   • <b>Auth Token</b>\n"
-        "3️⃣ Активируйте WhatsApp Sandbox (для теста)\n"
-        "   или купите номер с WhatsApp (для продакшена)\n"
-        "4️⃣ Отправьте SID и Token сюда 👇\n\n"
-        "Формат: <code>account_sid | auth_token</code>",
+        "4️⃣ <b>Отправьте данные</b>\n\n"
+        "Пришлите <b>два значения</b> в одном сообщении:\n\n"
+        "<code>account_sid | auth_token</code>\n\n"
+        "Например:\n"
+        "<code>AC1a2b3c4d5e... | 9f8e7d6c5b4a...</code>\n\n"
+        "Мы автоматически:\n"
+        "✅ Подключим Twilio к вашему AI-боту\n"
+        "✅ Настроим webhook для WhatsApp\n"
+        "✅ Отправим тестовое сообщение для проверки",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🌐 Открыть Twilio", url="https://www.twilio.com/try-twilio")],
-            [InlineKeyboardButton(text="◀️ Назад", callback_data="guide_whatsapp")],
+            [InlineKeyboardButton(text="◀️ Назад", callback_data="tw_step3")],
         ]),
     )
     await callback.answer()
