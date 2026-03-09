@@ -343,7 +343,34 @@ async def on_payment(message: types.Message):
         await activate_cu(message, uid, user, stars)
         return
 
-    await message.answer(f"🎉 Оплата прошла! {stars} ⭐ — спасибо!\n\nТеперь у тебя безлимит {'на ' + str(days) + ' дней' if days > 0 else ''}. Пиши что угодно! 🚀")
+    lang = session.get("lang", "ru")
+    plan_name = plan.get("title", plan_key).split("—")[0].strip() if plan else plan_key
+
+    # ── Step 1: Payment confirmation ──
+    await message.answer(
+        f"🎉 <b>Оплата прошла!</b> {stars} ⭐\n\n"
+        f"✅ План <b>{plan_name}</b> активирован.\n"
+        f"Давайте настроим вашего AI-ассистента! 👇"
+    )
+
+    # ── Step 2: Onboarding — ask about business ──
+    session["onboarding"] = True
+    session["onboarding_step"] = 1
+
+    ob_kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🍽 Ресторан / кафе", callback_data="ob_restaurant"),
+         InlineKeyboardButton(text="🏥 Клиника", callback_data="ob_clinic")],
+        [InlineKeyboardButton(text="💇 Салон красоты", callback_data="ob_salon"),
+         InlineKeyboardButton(text="🛍 Магазин", callback_data="ob_shop")],
+        [InlineKeyboardButton(text="💼 Услуги / B2B", callback_data="ob_services"),
+         InlineKeyboardButton(text="📦 Другое", callback_data="ob_other")],
+    ])
+
+    await message.answer(
+        "📋 <b>Шаг 1 из 4 — Ваш бизнес</b>\n\n"
+        "Выберите нишу, чтобы AI-ассистент сразу знал специфику вашей работы:",
+        reply_markup=ob_kb,
+    )
     
     # Notify admin
     try:
@@ -1516,6 +1543,38 @@ async def on_text(message: types.Message):
         logger.warning(f"Prompt injection attempt from {uid}: {text[:200]}")
         await message.answer("🛡️ Некорректный запрос. Давай общаться нормально — спроси что тебя интересует!")
         return
+
+    # ── Onboarding text input ──
+    if session.get("onboarding"):
+        step = session.get("onboarding_step", 0)
+        if step == 2:
+            # Step 2: got business name → ask tasks
+            session["ob_biz_name"] = text.strip()
+            session["onboarding_step"] = 3
+            await message.answer(
+                f"✅ Компания: <b>{text.strip()}</b>\n\n"
+                f"📋 <b>Шаг 3 из 4 — Задачи ассистента</b>\n\n"
+                f"Что должен делать ваш AI-бот?\n"
+                f"Например: <i>Отвечать на вопросы клиентов, принимать заказы, записывать на приём, рассказывать о ценах</i>",
+            )
+            return
+        elif step == 3:
+            # Step 3: got tasks → ask channel
+            session["ob_tasks"] = text.strip()
+            session["onboarding_step"] = 4
+            ch_kb = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="📱 Telegram", callback_data="ob_channel_telegram"),
+                 InlineKeyboardButton(text="💬 WhatsApp", callback_data="ob_channel_whatsapp")],
+                [InlineKeyboardButton(text="🌐 Сайт", callback_data="ob_channel_website"),
+                 InlineKeyboardButton(text="🔗 Все каналы", callback_data="ob_channel_all")],
+            ])
+            await message.answer(
+                f"✅ Задачи: <b>{text.strip()[:100]}</b>\n\n"
+                f"📋 <b>Шаг 4 из 4 — Где подключить?</b>\n\n"
+                f"В каком канале будет работать ваш AI-ассистент?",
+                reply_markup=ch_kb,
+            )
+            return
     
     # === Mode: custom assistant chat ===
     if session["mode"] == "assistant" and session["persona"]:
@@ -1688,3 +1747,93 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
+
+# ══════════════════════════════════════════
+# ONBOARDING FLOW (after payment)
+# ══════════════════════════════════════════
+
+# Step 1: Business niche selected
+@dp.callback_query(F.data.startswith("ob_"))
+async def on_ob_niche(callback: types.CallbackQuery):
+    uid = callback.from_user.id
+    session = get_session(uid)
+    niche = callback.data.replace("ob_", "")
+    session["ob_niche"] = niche
+    session["onboarding_step"] = 2
+    lang = session.get("lang", "ru")
+
+    niche_names = {
+        "restaurant": "Ресторан / кафе", "clinic": "Клиника", "salon": "Салон красоты",
+        "shop": "Магазин", "services": "Услуги / B2B", "other": "Другое",
+    }
+    session["ob_niche_name"] = niche_names.get(niche, niche)
+
+    await callback.message.edit_text(
+        f"✅ Ниша: <b>{session['ob_niche_name']}</b>\n\n"
+        f"📋 <b>Шаг 2 из 4 — Название бизнеса</b>\n\n"
+        f"Напишите название вашей компании (как клиенты вас знают).\n"
+        f"Например: <i>Ресторан «У Георгия»</i>",
+    )
+    await callback.answer()
+
+
+# Step 2: Business name (text input)
+# Step 3: What should bot do (text input)
+# These are handled in the main message handler
+
+
+# Step 4: Channel selection
+@dp.callback_query(F.data.startswith("ob_channel_"))
+async def on_ob_channel(callback: types.CallbackQuery):
+    uid = callback.from_user.id
+    session = get_session(uid)
+    channel = callback.data.replace("ob_channel_", "")
+    session["ob_channel"] = channel
+    session["onboarding_step"] = 5
+    lang = session.get("lang", "ru")
+
+    channel_names = {"telegram": "Telegram", "whatsapp": "WhatsApp", "website": "Сайт", "all": "Все каналы"}
+    ch_name = channel_names.get(channel, channel)
+
+    # ── Onboarding complete! Create the assistant ──
+    niche = session.get("ob_niche_name", "бизнес")
+    biz_name = session.get("ob_biz_name", "Мой бизнес")
+    tasks = session.get("ob_tasks", "общение с клиентами")
+
+    summary = (
+        f"🎉 <b>Настройка завершена!</b>\n\n"
+        f"📊 <b>Ваш AI-ассистент:</b>\n"
+        f"• Бизнес: {biz_name} ({niche})\n"
+        f"• Задачи: {tasks[:200]}\n"
+        f"• Канал: {ch_name}\n\n"
+        f"⏱ <b>Что дальше:</b>\n"
+        f"1. Наш менеджер свяжется с вами в течение 1 часа\n"
+        f"2. Мы настроим бота под ваш бизнес\n"
+        f"3. Обучим на ваших данных (меню, прайс, FAQ)\n"
+        f"4. Запустим в работу!\n\n"
+        f"💬 Если есть вопросы — просто пишите сюда."
+    )
+
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📋 Меню", callback_data="back_menu")],
+    ])
+
+    await callback.message.edit_text(summary, reply_markup=kb)
+    await callback.answer()
+
+    session["onboarding"] = False
+    session["onboarding_step"] = 0
+
+    # Notify admin with full onboarding data
+    user = callback.from_user
+    try:
+        await bot.send_message(ADMIN_ID,
+            f"🚀 <b>НОВЫЙ КЛИЕНТ — ONBOARDING COMPLETE!</b>\n\n"
+            f"👤 {user.full_name}{(' (@' + user.username + ')') if user.username else ''}\n"
+            f"🆔 {user.id}\n"
+            f"🏢 {biz_name} ({niche})\n"
+            f"📝 Задачи: {tasks[:300]}\n"
+            f"📱 Канал: {ch_name}\n\n"
+            f"⚡ Нужно настроить бота!")
+    except: pass
