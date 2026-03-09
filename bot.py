@@ -227,9 +227,9 @@ async def text_to_voice(text: str) -> str | None:
         return None
 
 
-async def send_with_voice(message: types.Message, text: str):
+async def send_with_voice(message: types.Message, text: str, reply_markup=None):
     """Send text + optional voice message."""
-    await message.answer(text)
+    await message.answer(text, reply_markup=reply_markup)
     if VOICE_ENABLED:
         # Strip HTML tags for TTS
         import re
@@ -1162,10 +1162,16 @@ async def on_create(callback: types.CallbackQuery):
     session = get_session(uid)
     session["mode"] = "receptionist"
     
+    lang = session.get("lang", detect_lang(callback.from_user))
     response = gemini_chat(SYSTEM_PROMPT, session["history"], "Я хочу создать своего AI-помощника")
     session["history"].append({"user": "Хочу создать AI-помощника", "bot": response})
     
-    await callback.message.answer(response)
+    action_kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=t(lang, "btn_order_assistant"), callback_data="funnel_pricing")],
+        [InlineKeyboardButton(text="🎯 Демо", callback_data="funnel_demo"),
+         InlineKeyboardButton(text="📋 Меню", callback_data="back_menu")],
+    ])
+    await callback.message.answer(response, reply_markup=action_kb)
     await callback.answer()
 
 
@@ -1666,7 +1672,13 @@ async def on_text(message: types.Message):
         
         logger.info(f"Created assistant for {uid}: {persona[:100]}")
     else:
-        await send_with_voice(message, response)
+        # Add action buttons after every AI response
+        action_kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text=t(lang, "btn_order_assistant"), callback_data="funnel_pricing")],
+            [InlineKeyboardButton(text="🎯 Демо", callback_data="funnel_demo"),
+             InlineKeyboardButton(text="📋 Меню", callback_data="back_menu")],
+        ])
+        await send_with_voice(message, response, reply_markup=action_kb)
 
 
 async def main():
