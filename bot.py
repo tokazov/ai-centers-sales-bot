@@ -2193,25 +2193,110 @@ async def on_guide_telegram(callback: types.CallbackQuery):
 @dp.callback_query(F.data == "guide_whatsapp")
 async def on_guide_whatsapp(callback: types.CallbackQuery):
     session = get_session(callback.from_user.id)
-    bot_username = session.get("created_bot_username", "ваш_бот")
     await callback.message.answer(
         f"💬 <b>Подключение к WhatsApp</b>\n\n"
-        f"Бот будет отвечать клиентам в WhatsApp — автоматически, 24/7.\n\n"
-        f"<b>Как подключить:</b>\n\n"
-        f"1️⃣ Вам нужен <b>WhatsApp Business</b> аккаунт\n"
-        f"   (скачайте WhatsApp Business из App Store / Google Play)\n\n"
-        f"2️⃣ Мы подключим бота через <b>WhatsApp Business API</b>\n"
-        f"   Напишите нам «подключить WhatsApp» — поможем настроить\n\n"
-        f"3️⃣ После подключения бот отвечает клиентам в WhatsApp\n"
-        f"   от имени вашего бизнес-номера\n\n"
+        f"AI-бот будет отвечать клиентам в WhatsApp — автоматически, 24/7.\n"
+        f"Выберите подходящий вариант:\n\n"
         f"{'─' * 25}\n\n"
-        f"💡 <b>Как работает:</b>\n"
+        f"1️⃣ <b>У меня есть Meta Business</b> (бесплатно)\n"
+        f"Если у вас уже настроен WhatsApp Business API через Meta — просто дайте нам токен доступа. Подключим за 5 минут.\n\n"
+        f"2️⃣ <b>Подключить через Wazzup24</b> (~$30/мес)\n"
+        f"Самый простой способ. Регистрация за 2 минуты, не нужна верификация Meta. WhatsApp + Instagram в одном сервисе.\n\n"
+        f"3️⃣ <b>У меня только WhatsApp Business</b> (приложение)\n"
+        f"Поможем настроить Meta Business и подключить API. Занимает 1-3 дня на верификацию.\n\n"
+        f"{'─' * 25}\n\n"
+        f"💡 <b>Результат одинаковый:</b>\n"
         f"Клиент пишет на ваш WhatsApp → AI отвечает мгновенно\n"
-        f"Вы видите все диалоги в WhatsApp Business\n"
-        f"Можете в любой момент подключиться и написать сами",
+        f"Вы видите все диалоги и можете подключиться в любой момент",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="💬 Подключить WhatsApp", callback_data="ob_send_custom_request")],
+            [InlineKeyboardButton(text="💼 У меня есть Meta Business", callback_data="wa_meta")],
+            [InlineKeyboardButton(text="⚡ Подключить через Wazzup24", callback_data="wa_wazzup")],
+            [InlineKeyboardButton(text="📱 У меня только приложение", callback_data="wa_app_only")],
             [InlineKeyboardButton(text="◀️ Другие каналы", callback_data="guide_back")],
+        ]),
+    )
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "wa_meta")
+async def on_wa_meta(callback: types.CallbackQuery):
+    session = get_session(callback.from_user.id)
+    session["awaiting_wa_token"] = True
+    await callback.message.answer(
+        "💼 <b>Подключение через Meta Business API</b>\n\n"
+        "Отлично! Это самый быстрый и бесплатный способ.\n\n"
+        "<b>Нам нужны 2 вещи:</b>\n\n"
+        "1️⃣ <b>Постоянный токен доступа</b>\n"
+        "Meta Business Suite → Настройки → WhatsApp → API Setup → Permanent Token\n\n"
+        "2️⃣ <b>Phone Number ID</b>\n"
+        "Там же, под номером телефона\n\n"
+        "Отправьте оба значения сюда 👇\n"
+        "Формат: <code>токен | phone_number_id</code>",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="◀️ Назад", callback_data="guide_whatsapp")],
+        ]),
+    )
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "wa_wazzup")
+async def on_wa_wazzup(callback: types.CallbackQuery):
+    await callback.message.answer(
+        "⚡ <b>Подключение через Wazzup24</b>\n\n"
+        "Wazzup24 — сервис-посредник. Не нужна верификация Meta, подключение за 5 минут.\n\n"
+        "<b>Пошагово:</b>\n\n"
+        "1️⃣ Зайдите на <b>wazzup24.com</b> → Регистрация\n"
+        "2️⃣ Подключите ваш WhatsApp номер (QR-код)\n"
+        "3️⃣ Перейдите в Настройки → API → скопируйте <b>API Key</b>\n"
+        "4️⃣ Отправьте API Key сюда 👇\n\n"
+        "💰 Стоимость: ~$30/мес (включает WhatsApp + Instagram)\n\n"
+        "🎁 <b>Бонус:</b> Через Wazzup24 можно сразу подключить и Instagram!",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🌐 Открыть Wazzup24", url="https://wazzup24.com")],
+            [InlineKeyboardButton(text="◀️ Назад", callback_data="guide_whatsapp")],
+        ]),
+    )
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "wa_app_only")
+async def on_wa_app_only(callback: types.CallbackQuery):
+    await callback.message.answer(
+        "📱 <b>Настройка с нуля</b>\n\n"
+        "У вас WhatsApp Business приложение — отлично, это первый шаг!\n\n"
+        "<b>Есть 2 пути:</b>\n\n"
+        "🅰️ <b>Быстрый (рекомендуем)</b>\n"
+        "Зарегистрируйтесь на Wazzup24 → подключите номер через QR-код → готово за 5 минут.\n"
+        "Стоимость ~$30/мес.\n\n"
+        "🅱️ <b>Бесплатный (дольше)</b>\n"
+        "Создайте Meta Business аккаунт → пройдите верификацию (3-7 дней) → подключите WhatsApp API.\n\n"
+        "Что выбираете?",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="⚡ Быстрый (Wazzup24)", callback_data="wa_wazzup")],
+            [InlineKeyboardButton(text="🆓 Бесплатный (Meta)", callback_data="wa_meta_setup")],
+            [InlineKeyboardButton(text="◀️ Назад", callback_data="guide_whatsapp")],
+        ]),
+    )
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "wa_meta_setup")
+async def on_wa_meta_setup(callback: types.CallbackQuery):
+    await callback.message.answer(
+        "🆓 <b>Настройка Meta Business (бесплатно)</b>\n\n"
+        "<b>Шаг 1:</b> Создайте аккаунт на business.facebook.com\n\n"
+        "<b>Шаг 2:</b> Добавьте WhatsApp в Meta Business Suite\n"
+        "Business Settings → Accounts → WhatsApp Accounts → Add\n\n"
+        "<b>Шаг 3:</b> Пройдите верификацию бизнеса\n"
+        "Загрузите документ (ИНН, выписка, счёт за коммуналку)\n"
+        "Ожидание: 1-7 рабочих дней\n\n"
+        "<b>Шаг 4:</b> Настройте WhatsApp API\n"
+        "WhatsApp → API Setup → создайте Permanent Token\n\n"
+        "<b>Шаг 5:</b> Отправьте токен и Phone Number ID сюда\n\n"
+        "Если нужна помощь на любом шаге — просто напишите!",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🌐 Открыть Meta Business", url="https://business.facebook.com")],
+            [InlineKeyboardButton(text="◀️ Назад", callback_data="wa_app_only")],
         ]),
     )
     await callback.answer()
@@ -2250,21 +2335,70 @@ async def on_guide_instagram(callback: types.CallbackQuery):
     session = get_session(callback.from_user.id)
     await callback.message.answer(
         f"📸 <b>Подключение к Instagram</b>\n\n"
-        f"Бот будет отвечать на сообщения в Instagram Direct автоматически.\n\n"
-        f"<b>Как подключить:</b>\n\n"
-        f"1️⃣ У вас должен быть <b>бизнес-аккаунт</b> в Instagram\n"
-        f"   (Настройки → Аккаунт → Переключить на бизнес)\n\n"
-        f"2️⃣ Привяжите Instagram к <b>Facebook Business</b> странице\n\n"
-        f"3️⃣ Напишите нам «подключить Instagram» — мы настроим\n"
-        f"   интеграцию через Instagram Graph API\n\n"
+        f"AI-бот отвечает на сообщения в Direct автоматически.\n"
+        f"Выберите подходящий вариант:\n\n"
         f"{'─' * 25}\n\n"
-        f"💡 <b>Как работает:</b>\n"
+        f"1️⃣ <b>У меня бизнес-аккаунт + Meta Business</b> (бесплатно)\n"
+        f"Instagram привязан к Facebook Page → дайте нам токен страницы.\n"
+        f"Подключим за 5 минут.\n\n"
+        f"2️⃣ <b>Подключить через Wazzup24</b> (~$30/мес)\n"
+        f"Самый простой путь. Сканируете QR-код — и Instagram подключён.\n"
+        f"Бонус: WhatsApp в комплекте!\n\n"
+        f"3️⃣ <b>У меня обычный/бизнес-аккаунт без Meta</b>\n"
+        f"Поможем привязать Instagram к Facebook Page и настроить API.\n\n"
+        f"{'─' * 25}\n\n"
+        f"💡 <b>Результат:</b>\n"
         f"Клиент пишет в Direct → AI отвечает мгновенно\n"
-        f"Отвечает на вопросы о ценах, бронях, наличии\n"
-        f"Вы видите все диалоги в Instagram",
+        f"Отвечает на вопросы о ценах, бронях, наличии",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="📸 Подключить Instagram", callback_data="ob_send_custom_request")],
+            [InlineKeyboardButton(text="💼 У меня есть Meta Business", callback_data="ig_meta")],
+            [InlineKeyboardButton(text="⚡ Подключить через Wazzup24", callback_data="wa_wazzup")],
+            [InlineKeyboardButton(text="📱 Помогите настроить", callback_data="ig_setup")],
             [InlineKeyboardButton(text="◀️ Другие каналы", callback_data="guide_back")],
+        ]),
+    )
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "ig_meta")
+async def on_ig_meta(callback: types.CallbackQuery):
+    session = get_session(callback.from_user.id)
+    session["awaiting_ig_token"] = True
+    await callback.message.answer(
+        "💼 <b>Подключение Instagram через Meta</b>\n\n"
+        "<b>Нам нужны:</b>\n\n"
+        "1️⃣ <b>Page Access Token</b>\n"
+        "Meta Business Suite → Настройки → API → Generate Token\n"
+        "(выберите страницу, привязанную к Instagram)\n\n"
+        "2️⃣ <b>Instagram Business Account ID</b>\n"
+        "Там же, в разделе Instagram Accounts\n\n"
+        "Отправьте оба значения сюда 👇\n"
+        "Формат: <code>токен | instagram_account_id</code>",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="◀️ Назад", callback_data="guide_instagram")],
+        ]),
+    )
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "ig_setup")
+async def on_ig_setup(callback: types.CallbackQuery):
+    await callback.message.answer(
+        "📱 <b>Настройка Instagram для AI</b>\n\n"
+        "<b>Шаг 1:</b> Переключите аккаунт на бизнес\n"
+        "Instagram → Настройки → Аккаунт → Переключить на бизнес-аккаунт\n\n"
+        "<b>Шаг 2:</b> Создайте Facebook Page (если нет)\n"
+        "facebook.com → Создать → Страница → название бизнеса\n\n"
+        "<b>Шаг 3:</b> Привяжите Instagram к Facebook Page\n"
+        "Facebook Page → Настройки → Instagram → Подключить аккаунт\n\n"
+        "<b>Шаг 4:</b> Выберите способ подключения API:\n\n"
+        "🅰️ <b>Через Wazzup24</b> (быстро, ~$30/мес) — QR-код и готово\n"
+        "🅱️ <b>Через Meta Business</b> (бесплатно, 3-7 дней верификация)\n\n"
+        "Если нужна помощь — просто напишите что не получается!",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="⚡ Wazzup24 (быстро)", callback_data="wa_wazzup")],
+            [InlineKeyboardButton(text="🆓 Meta Business (бесплатно)", callback_data="wa_meta_setup")],
+            [InlineKeyboardButton(text="◀️ Назад", callback_data="guide_instagram")],
         ]),
     )
     await callback.answer()
