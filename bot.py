@@ -1169,6 +1169,40 @@ async def cmd_reset(message: types.Message):
     await message.answer("🔄 Начнём с чистого листа! Чем могу помочь?")
 
 
+@dp.message(Command("test_pay"))
+async def cmd_test_pay(message: types.Message):
+    """Admin-only: simulate payment → trigger onboarding."""
+    if message.from_user.id != ADMIN_ID:
+        return
+    uid = message.from_user.id
+    session = get_session(uid)
+    lang = session.get("lang", "ru")
+
+    await message.answer(
+        "🎉 <b>Оплата прошла!</b> 250 ⭐ (тест)\n\n"
+        "✅ План <b>Starter</b> активирован.\n"
+        "Давайте настроим вашего AI-ассистента! 👇"
+    )
+
+    session["onboarding"] = True
+    session["onboarding_step"] = 1
+
+    ob_kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🍽 Ресторан / кафе", callback_data="ob_restaurant"),
+         InlineKeyboardButton(text="🏥 Клиника", callback_data="ob_clinic")],
+        [InlineKeyboardButton(text="💇 Салон красоты", callback_data="ob_salon"),
+         InlineKeyboardButton(text="🛍 Магазин", callback_data="ob_shop")],
+        [InlineKeyboardButton(text="💼 Услуги / B2B", callback_data="ob_services"),
+         InlineKeyboardButton(text="📦 Другое", callback_data="ob_other")],
+    ])
+
+    await message.answer(
+        "📋 <b>Шаг 1 из 4 — Ваш бизнес</b>\n\n"
+        "Выберите нишу, чтобы AI-ассистент сразу знал специфику вашей работы:",
+        reply_markup=ob_kb,
+    )
+
+
 @dp.message(Command("menu"))
 async def cmd_menu(message: types.Message):
     kb = InlineKeyboardMarkup(inline_keyboard=[
