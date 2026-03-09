@@ -417,6 +417,7 @@ async def show_funnel_step1(message: types.Message):
         [InlineKeyboardButton(text=t(lang, "biz_services"), callback_data="biz_services"),
          InlineKeyboardButton(text=t(lang, "biz_other"), callback_data="biz_other")],
         [InlineKeyboardButton(text="🖥 AI Computer Use", callback_data="biz_computer")],
+        [InlineKeyboardButton(text=t(lang, "btn_order_assistant"), callback_data="funnel_pricing")],
     ])
     await message.answer(welcome_texts.get(lang, welcome_texts["en"]), reply_markup=kb)
 
