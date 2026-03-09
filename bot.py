@@ -1233,7 +1233,7 @@ async def on_create(callback: types.CallbackQuery):
     action_kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=t(lang, "btn_order_assistant"), callback_data="funnel_pricing")],
         [InlineKeyboardButton(text="🎯 Демо", callback_data="funnel_demo"),
-         InlineKeyboardButton(text="📋 Меню", callback_data="back_menu")],
+         InlineKeyboardButton(text="🏠 Главное меню", callback_data="back_menu")],
     ])
     await callback.message.answer(response, reply_markup=action_kb)
     await callback.answer()
@@ -1772,7 +1772,7 @@ async def on_text(message: types.Message):
         action_kb = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text=t(lang, "btn_order_assistant"), callback_data="funnel_pricing")],
             [InlineKeyboardButton(text="🎯 Демо", callback_data="funnel_demo"),
-             InlineKeyboardButton(text="📋 Меню", callback_data="back_menu")],
+             InlineKeyboardButton(text="🏠 Главное меню", callback_data="back_menu")],
         ])
         await send_with_voice(message, response, reply_markup=action_kb)
 
@@ -1824,7 +1824,7 @@ async def on_ob_channel(callback: types.CallbackQuery):
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📎 Отправить ссылку на сайт", callback_data="ob_send_url")],
         [InlineKeyboardButton(text="💬 Написать описание бизнеса", callback_data="ob_send_desc")],
-        [InlineKeyboardButton(text="📋 Меню", callback_data="back_menu")],
+        [InlineKeyboardButton(text="🏠 Главное меню", callback_data="back_menu")],
     ])
 
     await callback.message.answer(summary, reply_markup=kb)
