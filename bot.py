@@ -1613,6 +1613,44 @@ async def on_text(message: types.Message):
             )
             return
     
+    # ── Awaiting training data (post-onboarding) ──
+    if session.get("awaiting_data"):
+        data_type = session.get("awaiting_data", True)
+        # Save the data
+        if "ob_training_data" not in session:
+            session["ob_training_data"] = []
+        session["ob_training_data"].append({"type": str(data_type), "text": text.strip()})
+
+        niche_key = session.get("ob_niche", "other")
+        biz_name = session.get("ob_biz_name", "Мой бизнес")
+
+        type_labels = {"url": "🌐 Ссылка", "menu": "🍽 Меню", "price": "📄 Прайс", "desc": "📝 Описание", "catalog": "🛍 Каталог"}
+        label = type_labels.get(data_type, "📎 Данные")
+
+        count = len(session["ob_training_data"])
+
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="📎 Добавить ещё данные", callback_data="ob_more_data")],
+            [InlineKeyboardButton(text="✅ Готово — создать бота!", callback_data="ob_create_bot")],
+        ])
+
+        await message.answer(
+            f"✅ {label} получено!\n\n"
+            f"📊 Собрано материалов: <b>{count}</b>\n\n"
+            f"Можете отправить ещё (фото, файлы, ссылки, текст) или нажмите «Создать бота».",
+            reply_markup=kb,
+        )
+
+        # Notify admin
+        user = message.from_user
+        try:
+            if uid != ADMIN_ID:
+                await bot.send_message(ADMIN_ID,
+                    f"📎 Данные от клиента {user.full_name} ({biz_name}):\n"
+                    f"{label}: {text.strip()[:500]}")
+        except: pass
+        return
+
     # === Mode: custom assistant chat ===
     if session["mode"] == "assistant" and session["persona"]:
         session["count"] += 1
@@ -1859,6 +1897,64 @@ async def on_ob_channel(callback: types.CallbackQuery):
                 f"📝 {tasks[:300]}\n"
                 f"📱 {ch_name}")
         except: pass
+
+
+@dp.callback_query(F.data == "ob_more_data")
+async def on_ob_more_data(callback: types.CallbackQuery):
+    session = get_session(callback.from_user.id)
+    session["awaiting_data"] = True
+    await callback.message.answer(
+        "📎 Отправляйте ещё материалы:\n"
+        "• Ссылки, фото, PDF, текст\n"
+        "• Всё пойдёт на обучение бота 👇"
+    )
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "ob_create_bot")
+async def on_ob_create_bot(callback: types.CallbackQuery):
+    uid = callback.from_user.id
+    session = get_session(uid)
+    session["awaiting_data"] = False
+
+    biz_name = session.get("ob_biz_name", "Мой бизнес")
+    niche = session.get("ob_niche_name", "бизнес")
+    tasks = session.get("ob_tasks", "")
+    ch = session.get("ob_channel", "telegram")
+    data_count = len(session.get("ob_training_data", []))
+    channel_names = {"telegram": "Telegram", "whatsapp": "WhatsApp", "website": "Сайт", "all": "Все каналы"}
+
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🏠 Главное меню", callback_data="back_menu")],
+    ])
+
+    await callback.message.edit_text(
+        f"🚀 <b>Создаём вашего AI-ассистента!</b>\n\n"
+        f"📊 <b>Параметры:</b>\n"
+        f"• 🏢 {biz_name} ({niche})\n"
+        f"• 📝 {tasks[:150]}\n"
+        f"• 📱 {channel_names.get(ch, ch)}\n"
+        f"• 📎 Материалов загружено: {data_count}\n\n"
+        f"⏱ <b>Бот будет готов в течение 24 часов.</b>\n"
+        f"Мы пришлём уведомление сюда, когда всё будет настроено.\n\n"
+        f"💬 Есть вопросы? Просто напишите!",
+        reply_markup=kb,
+    )
+    await callback.answer()
+
+    # Final admin notification
+    user = callback.from_user
+    training = session.get("ob_training_data", [])
+    data_summary = "\n".join([f"  {d['type']}: {d['text'][:200]}" for d in training[:5]])
+    try:
+        await bot.send_message(ADMIN_ID,
+            f"🤖 <b>СОЗДАТЬ БОТА!</b>\n\n"
+            f"👤 {user.full_name}{(' (@' + user.username + ')') if user.username else ''}\n"
+            f"🏢 {biz_name} ({niche})\n"
+            f"📝 {tasks[:300]}\n"
+            f"📱 {channel_names.get(ch, ch)}\n"
+            f"📎 Данные ({data_count}):\n{data_summary}")
+    except: pass
 
 
 @dp.callback_query(F.data == "ob_send_url")
