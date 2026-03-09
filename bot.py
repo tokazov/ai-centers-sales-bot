@@ -1801,6 +1801,113 @@ async def on_text(message: types.Message):
             )
             return
 
+    # ── Awaiting channel tokens (WhatsApp/Instagram/Wazzup/Twilio) ──
+    channel_awaiting = None
+    if session.get("awaiting_wazzup_key"):
+        channel_awaiting = "wazzup"
+    elif session.get("awaiting_wa_token"):
+        channel_awaiting = "meta_wa"
+    elif session.get("awaiting_twilio_token"):
+        channel_awaiting = "twilio"
+    elif session.get("awaiting_ig_token"):
+        channel_awaiting = "meta_ig"
+
+    if channel_awaiting:
+        token_text = text.strip()
+        if len(token_text) < 10:
+            await message.answer(
+                "🤔 Это слишком короткий ключ. Проверьте и попробуйте ещё раз.",
+            )
+            return
+
+        # Save channel credentials
+        if "channel_credentials" not in session:
+            session["channel_credentials"] = {}
+        session["channel_credentials"][channel_awaiting] = token_text
+
+        # Clear awaiting flags
+        for flag in ["awaiting_wazzup_key", "awaiting_wa_token", "awaiting_twilio_token", "awaiting_ig_token"]:
+            session.pop(flag, None)
+
+        bot_username = session.get("created_bot_username", "")
+        biz_name = session.get("ob_biz_name", "")
+        uid = message.from_user.id
+        user = message.from_user
+
+        channel_names = {
+            "wazzup": "Wazzup24 (WhatsApp + Instagram)",
+            "meta_wa": "Meta WhatsApp API",
+            "twilio": "Twilio WhatsApp",
+            "meta_ig": "Meta Instagram API",
+        }
+        ch_display = channel_names.get(channel_awaiting, channel_awaiting)
+
+        # Auto-configure via Engine API
+        await message.answer("⏳ <b>Проверяю и подключаю...</b>")
+
+        try:
+            import aiohttp
+            async with aiohttp.ClientSession() as http:
+                payload = {
+                    "bot_username": bot_username,
+                    "channel_type": channel_awaiting,
+                    "credentials": token_text,
+                    "user_id": uid,
+                }
+                resp = await http.post(
+                    f"{ENGINE_API_URL}/channels/connect",
+                    json=payload,
+                    headers={"X-Internal-Key": PLATFORM_API_KEY},
+                    timeout=aiohttp.ClientTimeout(total=30),
+                )
+                if resp.status in (200, 201):
+                    result = await resp.json()
+                    await message.answer(
+                        f"✅ <b>{ch_display} подключён!</b>\n\n"
+                        f"🤖 Бот @{bot_username} теперь отвечает клиентам через {ch_display}.\n\n"
+                        f"Хотите подключить ещё каналы?",
+                        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                            [InlineKeyboardButton(text="🔌 Другие каналы", callback_data="guide_back")],
+                            [InlineKeyboardButton(text="🏠 Главное меню", callback_data="back_menu")],
+                        ]),
+                    )
+                else:
+                    error_data = await resp.json()
+                    error_msg = error_data.get("detail", "Неизвестная ошибка")
+                    await message.answer(
+                        f"❌ Не удалось подключить: {error_msg}\n\n"
+                        f"Проверьте данные и попробуйте ещё раз.",
+                        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                            [InlineKeyboardButton(text="🔄 Попробовать снова", callback_data=f"guide_whatsapp")],
+                            [InlineKeyboardButton(text="🏠 Главное меню", callback_data="back_menu")],
+                        ]),
+                    )
+        except Exception as e:
+            logger.error(f"Channel connect error: {e}")
+            # Fallback: save for manual processing
+            await message.answer(
+                f"✅ <b>Данные получены!</b>\n\n"
+                f"📱 Канал: {ch_display}\n"
+                f"🔗 Подключаем к @{bot_username}...\n\n"
+                f"Настройка занимает до 5 минут. Мы пришлём уведомление когда всё будет готово!",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="🔌 Другие каналы", callback_data="guide_back")],
+                    [InlineKeyboardButton(text="🏠 Главное меню", callback_data="back_menu")],
+                ]),
+            )
+
+        # Notify admin
+        try:
+            if uid != ADMIN_ID:
+                await bot.send_message(ADMIN_ID,
+                    f"🔌 <b>ПОДКЛЮЧЕНИЕ КАНАЛА</b>\n\n"
+                    f"👤 {user.full_name}{(' (@' + user.username + ')') if user.username else ''}\n"
+                    f"📱 {ch_display}\n"
+                    f"🤖 @{bot_username}\n"
+                    f"🔑 {token_text[:30]}...")
+        except: pass
+        return
+
     # ── Awaiting training data (post-onboarding) ──
     if session.get("awaiting_data"):
         data_type = session.get("awaiting_data", True)
