@@ -6,6 +6,7 @@ import logging
 import urllib.request
 from aiogram import Router, F, types
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+import aiohttp
 
 from core import (
     bot, ADMIN_ID, PLATFORM_API_URL, PLATFORM_API_KEY, COMPUTER_USE_BOT,
