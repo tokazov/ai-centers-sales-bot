@@ -22,7 +22,7 @@ STAR_PLANS = {
     "week": {"title": "AI Centers — Неделя ⭐", "description": "7 дней безлимитного общения с AI-помощником", "stars": STARS_WEEK, "days": 7},
     "month": {"title": "AI Centers — Месяц ⭐", "description": "30 дней безлимитного общения + все агенты", "stars": STARS_MONTH, "days": 30},
     "premium": {"title": "AI Centers Premium ⭐", "description": "30 дней — все агенты, приоритет, голосовые ответы", "stars": STARS_PREMIUM, "days": 30},
-    "custom": {"title": "AI-бот под ключ ⭐", "description": "Консультация + создание персонального AI-бота", "stars": STARS_CUSTOM, "days": 0},
+    "custom": {"title": "AI-ассистент под ключ ⭐", "description": "Консультация + создание персонального AI-ассистента", "stars": STARS_CUSTOM, "days": 0},
     "cu_activation": {"title": "AI Computer Use — Активация ⭐", "description": "Подключение AI + первый месяц бесплатно", "stars": STARS_CU_ACTIVATION, "days": 30},
     "starter": {"title": "AI Centers Starter ⭐", "description": "1 AI-сотрудник, Telegram + WhatsApp + сайт, настройка за 5 минут", "stars": 250, "days": 30},
     "pro": {"title": "AI Centers Pro ⭐", "description": "3 AI-сотрудника, CRM интеграция, приоритетная поддержка", "stars": 500, "days": 30},

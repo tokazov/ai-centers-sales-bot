@@ -106,7 +106,7 @@ async def on_guide_whatsapp(callback: types.CallbackQuery):
     session = get_session(callback.from_user.id)
     await callback.message.answer(
         f"💬 <b>Подключение к WhatsApp</b>\n\n"
-        f"AI-бот будет отвечать клиентам в WhatsApp — автоматически, 24/7.\n"
+        f"AI-ассистент будет отвечать клиентам в WhatsApp — автоматически, 24/7.\n"
         f"Выберите подходящий вариант:\n\n"
         f"{'─' * 25}\n\n"
         f"1️⃣ <b>У меня есть Meta Business</b> (бесплатно)\n"
@@ -205,7 +205,7 @@ async def on_meta_step3(callback: types.CallbackQuery):
         "Например:\n"
         "<code>EAABsbCS1iHg... | 1234567890</code>\n\n"
         "Мы автоматически:\n"
-        "✅ Подключим ваш WhatsApp к AI-боту\n"
+        "✅ Подключим ваш WhatsApp к AI-ассистенту\n"
         "✅ Настроим webhook\n"
         "✅ Отправим тестовое сообщение для проверки",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
@@ -329,7 +329,7 @@ async def on_wz_step5(callback: types.CallbackQuery):
         "5️⃣ <b>Отправьте API Key</b>\n\n"
         "Вставьте скопированный API Key прямо сюда 👇\n\n"
         "Мы автоматически:\n"
-        "✅ Подключим ваш WhatsApp к AI-боту\n"
+        "✅ Подключим ваш WhatsApp к AI-ассистенту\n"
         "✅ Подключим Instagram (если добавили)\n"
         "✅ Настроим webhook для получения сообщений\n"
         "✅ Протестируем и пришлём подтверждение\n\n"
@@ -457,7 +457,7 @@ async def on_tw_step4(callback: types.CallbackQuery):
         "Например:\n"
         "<code>AC1a2b3c4d5e... | 9f8e7d6c5b4a...</code>\n\n"
         "Мы автоматически:\n"
-        "✅ Подключим Twilio к вашему AI-боту\n"
+        "✅ Подключим Twilio к вашему AI-ассистенту\n"
         "✅ Настроим webhook для WhatsApp\n"
         "✅ Отправим тестовое сообщение для проверки",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
@@ -660,7 +660,7 @@ async def on_guide_instagram(callback: types.CallbackQuery):
     session = get_session(callback.from_user.id)
     await callback.message.answer(
         f"📸 <b>Подключение к Instagram</b>\n\n"
-        f"AI-бот отвечает на сообщения в Direct автоматически.\n"
+        f"AI-ассистент отвечает на сообщения в Direct автоматически.\n"
         f"Выберите подходящий вариант:\n\n"
         f"{'─' * 25}\n\n"
         f"1️⃣ <b>У меня бизнес-аккаунт + Meta Business</b> (бесплатно)\n"
