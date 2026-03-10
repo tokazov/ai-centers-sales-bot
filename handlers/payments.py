@@ -4,6 +4,7 @@ import time
 import logging
 import aiohttp
 from aiogram import Router, F, types
+import aiohttp
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, LabeledPrice
 
 from core import (

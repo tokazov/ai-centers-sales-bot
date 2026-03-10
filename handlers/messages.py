@@ -13,6 +13,7 @@ import aiohttp
 from aiogram import Router, F, types
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile
 
+from handlers.payments import STAR_PLANS
 from core import (
     SYSTEM_PROMPT, ASSISTANT_SYSTEM,
     bot, ADMIN_ID, PLATFORM_API_URL, PLATFORM_API_KEY,
