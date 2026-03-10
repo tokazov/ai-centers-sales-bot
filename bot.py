@@ -63,7 +63,7 @@ ELEVENLABS_KEY = os.getenv("ELEVENLABS_KEY", "")
 VOICE_ID = os.getenv("VOICE_ID", "EXAVITQu4vr4xnSDxMaL")  # Sarah — warm female voice for receptionist
 VOICE_ENABLED = bool(ELEVENLABS_KEY)
 OPENAI_KEY = os.getenv("OPENAI_KEY", "")
-OPENAI_KEY = os.getenv("OPENAI_KEY", "")
+ENGINE_API_URL = os.getenv("ENGINE_API_URL", "https://ai-centers-dashboard-production.up.railway.app")
 
 bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
 dp = Dispatcher(storage=MemoryStorage())
@@ -396,7 +396,7 @@ async def on_payment(message: types.Message):
             f"🆔 {user.id}\n"
             f"⭐ {stars} stars — план: {plan_key}\n"
             f"📝 Помощник: {session.get('persona', 'рецепционист')[:200]}")
-    except: pass
+    except Exception: pass
     
     logger.info(f"Payment: {uid} paid {stars} stars for {plan_key}")
 
@@ -1067,7 +1067,7 @@ async def on_funnel_demo(callback: types.CallbackQuery):
         await bot.send_message(ADMIN_ID,
             f"🔥 Лид (демо)!\n{callback.from_user.full_name} (@{callback.from_user.username or '?'})\n"
             f"Ниша: {niche_name}\nLang: {lang}\nID: {uid}")
-    except: pass
+    except Exception: pass
 
 
 # Step 5b — Pricing (Starter as main option)
@@ -1163,7 +1163,7 @@ async def on_funnel_buy(callback: types.CallbackQuery):
         await bot.send_message(ADMIN_ID,
             f"💰 Лид (оплата)!\n{callback.from_user.full_name} (@{callback.from_user.username or '?'})\n"
             f"План: {p['name']}\nLang: {lang}\nID: {uid}")
-    except: pass
+    except Exception: pass
 
 
 # Step 5c — Question → Gemini handles objections, then returns to offer
@@ -1767,7 +1767,7 @@ async def on_text(message: types.Message):
                             f"👤 {message.from_user.full_name}\n"
                             f"🤖 @{bot_username}\n"
                             f"🏢 {biz_name}")
-                    except: pass
+                    except Exception: pass
                 else:
                     error = result.get("detail", "Unknown error")
                     await message.answer(
@@ -1791,7 +1791,7 @@ async def on_text(message: types.Message):
                 try:
                     await bot.send_message(ADMIN_ID,
                         f"⚠️ ENGINE API FAIL\n{message.from_user.full_name}\nToken: {bot_token[:20]}...\nError: {e}")
-                except: pass
+                except Exception: pass
             return
         else:
             await message.answer(
@@ -1905,7 +1905,7 @@ async def on_text(message: types.Message):
                     f"📱 {ch_display}\n"
                     f"🤖 @{bot_username}\n"
                     f"🔑 {token_text[:30]}...")
-        except: pass
+        except Exception: pass
         return
 
     # ── Awaiting training data (post-onboarding) ──
@@ -1943,7 +1943,7 @@ async def on_text(message: types.Message):
                 await bot.send_message(ADMIN_ID,
                     f"📎 Данные от клиента {user.full_name} ({biz_name}):\n"
                     f"{label}: {text.strip()[:500]}")
-        except: pass
+        except Exception: pass
         return
 
     # === Mode: custom assistant chat ===
@@ -1983,7 +1983,7 @@ async def on_text(message: types.Message):
                     f"📝 Помощник: {session['persona'][:200]}\n"
                     f"💬 {session['count']} сообщений использовано\n"
                     f"⭐ Кнопки оплаты Stars отправлены")
-            except: pass
+            except Exception: pass
             return
         
         # Paid user — no limit
@@ -2097,7 +2097,7 @@ async def on_text(message: types.Message):
                 f"🆕 <b>Новый AI-помощник!</b>\n"
                 f"👤 {user.full_name}{(' (@' + user.username + ')') if user.username else ''}\n"
                 f"📝 {persona[:300]}")
-        except: pass
+        except Exception: pass
         
         logger.info(f"Created assistant for {uid}: {persona[:100]}")
     else:
@@ -2150,7 +2150,7 @@ async def on_ob_channel(callback: types.CallbackQuery):
     # Remove Step 4 buttons
     try:
         await callback.message.edit_text(f"✅ Канал: <b>{ch_name}</b>")
-    except: pass
+    except Exception: pass
     await callback.answer()
 
     # Context-aware buttons based on niche
@@ -2191,7 +2191,7 @@ async def on_ob_channel(callback: types.CallbackQuery):
                 f"🏢 {biz_name} ({niche})\n"
                 f"📝 {tasks[:300]}\n"
                 f"📱 {ch_name}")
-        except: pass
+        except Exception: pass
 
 
 @dp.callback_query(F.data == "ob_more_data")
@@ -2256,10 +2256,8 @@ async def on_ob_create_bot(callback: types.CallbackQuery):
             f"📝 {tasks[:300]}\n"
             f"📱 {channel_names.get(ch, ch)}\n"
             f"📎 Данные ({data_count}):\n{data_summary}")
-    except: pass
+    except Exception: pass
 
-
-ENGINE_API_URL = os.getenv("ENGINE_API_URL", "https://ai-centers-dashboard-production.up.railway.app")
 
 @dp.callback_query(F.data == "guide_telegram")
 async def on_guide_telegram(callback: types.CallbackQuery):
