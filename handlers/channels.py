@@ -70,7 +70,7 @@ async def on_tg_business(callback: types.CallbackQuery):
         f"   • Выбранные чаты\n"
         f"5️⃣ Готово! Бот отвечает от вашего имени 🎉\n\n"
         f"⚠️ <b>Требуется Telegram Premium</b>\n\n"
-        f"💡 Вы видите все диалоги и можете подключиться в любой момент",
+        f"💡 Вы видите все диалоги и можете подключиться в любой момент\n\n📸 <i>Не получается? Скиньте скриншот — подскажу куда нажать!</i>",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="◀️ Назад", callback_data="guide_telegram")],
         ]),
@@ -116,11 +116,11 @@ async def on_guide_whatsapp(callback: types.CallbackQuery):
         f"3️⃣ <b>Подключить через Twilio</b> (оплата за сообщение)\n"
         f"Надёжная платформа. $0.005 за сообщение. Подходит для малого объёма или если уже пользуетесь Twilio.\n\n"
         f"4️⃣ <b>У меня только WhatsApp Business</b> (приложение)\n"
-        f"Поможем настроить Meta Business и подключить API. Занимает 1-3 дня на верификацию.\n\n"
+        f"Поможем настроить Meta Business и подключить API. Занимает 1-3 дня на верификацию.\n\n📸 <i>Застряли на каком-то шаге? Скиньте скриншот — подскажу!</i>\n\n"
         f"{'─' * 25}\n\n"
         f"💡 <b>Результат одинаковый:</b>\n"
         f"Клиент пишет на ваш WhatsApp → AI отвечает мгновенно\n"
-        f"Вы видите все диалоги и можете подключиться в любой момент",
+        f"Вы видите все диалоги и можете подключиться в любой момент\n\n📸 <i>Не получается? Скиньте скриншот — подскажу куда нажать!</i>",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="💼 У меня есть Meta Business", callback_data="wa_meta")],
             [InlineKeyboardButton(text="⚡ Подключить через Wazzup24", callback_data="wa_wazzup")],
@@ -267,7 +267,7 @@ async def on_wz_step2(callback: types.CallbackQuery):
         "   • <b>iPhone:</b> Настройки → Связанные устройства → Привязать устройство\n"
         "6. Наведите камеру на QR-код\n"
         "7. Подождите 10-30 секунд — статус станет <b>«Активен» ✅</b>\n\n"
-        "⚠️ <b>Важно:</b> Телефон с WhatsApp должен быть подключён к интернету.\n"
+        "⚠️ <b>Важно:</b> Телефон с WhatsApp должен быть подключён к интернету.\n\n📸 <i>Скиньте скриншот если что-то не получается!</i>\n"
         "Если связь потеряется — зайдите в Wazzup и пересканируйте QR.",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="▶️ Дальше: подключить Instagram", callback_data="wz_step3")],
