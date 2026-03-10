@@ -5,6 +5,7 @@ import json
 import logging
 import urllib.request
 from aiogram import Router, F, types
+import aiohttp
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 from core import (

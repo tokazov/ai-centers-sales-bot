@@ -5,6 +5,7 @@ from aiogram import Router, F, types
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 from core import bot, ADMIN_ID, get_session, detect_lang, t
+from handlers.payments import paid_users
 
 logger = logging.getLogger(__name__)
 router = Router()

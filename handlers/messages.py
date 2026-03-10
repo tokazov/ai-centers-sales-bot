@@ -9,6 +9,7 @@ import json
 import logging
 import urllib.request
 import asyncio
+import aiohttp
 from aiogram import Router, F, types
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile
 
@@ -16,7 +17,7 @@ from core import (
     SYSTEM_PROMPT, ASSISTANT_SYSTEM,
     bot, ADMIN_ID, PLATFORM_API_URL, PLATFORM_API_KEY,
     OPENAI_KEY, GEMINI_KEY, GEMINI_MODEL,
-    ENGINE_API_URL,
+    ENGINE_API_URL, TOKEN,
     get_session, is_paid, detect_lang, t,
     check_rate_limit, detect_injection, gemini_chat, send_with_voice,
     FREE_LIMIT, VOICE_ENABLED,
@@ -35,6 +36,7 @@ def _get_show_funnel_step1():
     from handlers.funnel import show_funnel_step1
     return show_funnel_step1
 
+from handlers.payments import STAR_PLANS
 def _get_send_stars_invoice():
     from handlers.payments import send_stars_invoice
     return send_stars_invoice
