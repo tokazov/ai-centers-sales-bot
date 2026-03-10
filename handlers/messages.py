@@ -211,7 +211,7 @@ async def on_text(message: types.Message):
                             "business_type": niche,
                             "language": session.get("lang", "ru"),
                         }
-                        endpoint = f"{ENGINE_API_URL}/bots/auto-setup"
+                        endpoint = f"{ENGINE_API_URL}/internal/auto-setup"
                     else:
                         payload = {
                             "bot_token": bot_token,
@@ -220,7 +220,7 @@ async def on_text(message: types.Message):
                             "tone": "дружелюбный, профессиональный",
                             "knowledge_base": f"Бизнес: {biz_name}\nНиша: {niche}\nЗадачи: {tasks}\n\n{knowledge}",
                         }
-                        endpoint = f"{ENGINE_API_URL}/bots"
+                        endpoint = f"{ENGINE_API_URL}/internal/create-bot"
 
                     resp = await http.post(
                         endpoint,

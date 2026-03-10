@@ -215,7 +215,7 @@ async def notify_admin(text: str):
 
 # ─── Engine API ───────────────────────────────────────────────────────────────
 
-ENGINE_API_URL = os.getenv("ENGINE_API_URL", "https://ai-centers-dashboard-production.up.railway.app")
+ENGINE_API_URL = os.getenv("ENGINE_API_URL", "https://aicentersengine-production.up.railway.app")
 
 # ─── System Prompts ───────────────────────────────────────────────────────────
 
