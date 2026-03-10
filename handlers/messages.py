@@ -108,6 +108,79 @@ async def on_voice(message: types.Message):
         await message.answer("😔 Ошибка обработки голосового сообщения. Попробуйте написать текстом.")
 
 
+@router.message(F.photo)
+async def on_photo(message: types.Message):
+    """Handle screenshots — analyze with Gemini Vision and guide the user."""
+    uid = message.from_user.id
+    if check_rate_limit(uid):
+        await message.answer("⏳ Слишком много сообщений.")
+        return
+
+    await bot.send_chat_action(message.chat.id, "typing")
+    session = get_session(uid)
+    lang = session.get("lang", "ru")
+    caption = message.caption or ""
+
+    try:
+        # Download the largest photo
+        photo = message.photo[-1]
+        file = await bot.get_file(photo.file_id)
+        file_url = f"https://api.telegram.org/file/bot{TOKEN}/{file.file_path}"
+        loop = asyncio.get_event_loop()
+        req_obj = urllib.request.Request(file_url)
+        resp = await loop.run_in_executor(None, lambda: urllib.request.urlopen(req_obj, timeout=15))
+        img_bytes = resp.read()
+
+        import base64
+        img_b64 = base64.b64encode(img_bytes).decode()
+
+        # Determine context
+        if session.get("awaiting_bot_token") or session.get("onboarding"):
+            context = "Клиент настраивает AI-ассистента и прислал скриншот. Помоги разобраться что на экране и подскажи куда нажать / что делать дальше."
+        elif caption:
+            context = f"Клиент прислал скриншот с подписью: «{caption}». Помоги разобраться."
+        else:
+            context = "Клиент прислал скриншот. Проанализируй что на нём и подскажи что делать — куда нажать, что ввести, какой следующий шаг."
+
+        # Call Gemini Vision
+        vision_url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent?key={GEMINI_KEY}"
+        vision_payload = {
+            "contents": [{
+                "parts": [
+                    {"text": f"""Ты — AI-консультант AI Centers. {context}
+
+ПРАВИЛА:
+- Отвечай коротко и конкретно (2-5 предложений)
+- Покажи ТОЧНО куда нажать (опиши кнопку/элемент)
+- Если видишь ошибку — объясни как исправить
+- Отвечай на {'русском' if lang == 'ru' else 'английском'} языке
+- Используй HTML теги (<b>, <i>) умеренно"""},
+                    {"inline_data": {"mime_type": "image/jpeg", "data": img_b64}}
+                ]
+            }],
+            "generationConfig": {"maxOutputTokens": 1024, "temperature": 0.3}
+        }
+
+        import json as _json
+        req_data = _json.dumps(vision_payload).encode()
+        vision_req = urllib.request.Request(vision_url, data=req_data, headers={"Content-Type": "application/json"})
+        vision_resp = await loop.run_in_executor(None, lambda: urllib.request.urlopen(vision_req, timeout=30))
+        result = _json.loads(vision_resp.read().decode())
+
+        reply = result["candidates"][0]["content"]["parts"][0]["text"].strip()
+        await message.answer(reply, parse_mode="HTML")
+
+        # Save to history
+        session["history"].append({"role": "user", "parts": [f"[Скриншот] {caption}"]})
+        session["history"].append({"role": "model", "parts": [reply]})
+
+        logger.info(f"Photo analyzed for {uid}: {reply[:100]}")
+
+    except Exception as e:
+        logger.error(f"Photo handler error: {e}")
+        await message.answer("📸 Вижу скриншот! Опишите текстом что именно не получается, и я подскажу пошагово.")
+
+
 @router.message(F.text)
 async def on_text(message: types.Message):
     uid = message.from_user.id
