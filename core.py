@@ -32,6 +32,12 @@ STARS_PREMIUM = 1500
 STARS_CUSTOM = 3000
 STARS_CU_ACTIVATION = 19154
 
+# B2B Plans (Stars pricing: $1 ≈ 50 stars)
+STARS_STARTER = 7450       # $149 setup
+STARS_PRO = 14950          # $299 setup
+STARS_BUSINESS = 24950     # $499 setup
+STARS_ENTERPRISE = 74950   # $1499 setup
+
 PLATFORM_API_URL = os.getenv("PLATFORM_API_URL", "https://platform-api-production-f313.up.railway.app")
 PLATFORM_API_KEY = os.getenv("PLATFORM_API_KEY", "")
 COMPUTER_USE_BOT = os.getenv("COMPUTER_USE_BOT", "aicenters_computer_bot")

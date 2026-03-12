@@ -10,6 +10,7 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, LabeledPri
 from core import (
     bot, ADMIN_ID, PLATFORM_API_URL, PLATFORM_API_KEY,
     STARS_WEEK, STARS_MONTH, STARS_PREMIUM, STARS_CUSTOM, STARS_CU_ACTIVATION,
+    STARS_STARTER, STARS_PRO, STARS_BUSINESS, STARS_ENTERPRISE,
     get_session,
 )
 
@@ -24,10 +25,75 @@ STAR_PLANS = {
     "premium": {"title": "AI Centers Premium ⭐", "description": "30 дней — все агенты, приоритет, голосовые ответы", "stars": STARS_PREMIUM, "days": 30},
     "custom": {"title": "AI-ассистент под ключ ⭐", "description": "Консультация + создание персонального AI-ассистента", "stars": STARS_CUSTOM, "days": 0},
     "cu_activation": {"title": "AI Computer Use — Активация ⭐", "description": "Подключение AI + первый месяц бесплатно", "stars": STARS_CU_ACTIVATION, "days": 30},
-    "starter": {"title": "AI Centers Starter ⭐", "description": "1 AI-сотрудник, Telegram + WhatsApp + сайт, настройка за 5 минут", "stars": 250, "days": 30},
-    "pro": {"title": "AI Centers Pro ⭐", "description": "3 AI-сотрудника, CRM интеграция, приоритетная поддержка", "stars": 500, "days": 30},
-    "business": {"title": "AI Centers Business ⭐", "description": "10 AI-сотрудников, API + webhook, персональный менеджер", "stars": 1000, "days": 30},
+    "starter": {"title": "AI Centers Starter", "description": "1 AI-сотрудник • Telegram + WhatsApp + сайт • Обучение на ваших данных", "stars": STARS_STARTER, "days": 30},
+    "pro": {"title": "AI Centers Pro", "description": "3 AI-сотрудника • Все каналы • CRM интеграция • Аналитика", "stars": STARS_PRO, "days": 30},
+    "business": {"title": "AI Centers Business", "description": "10 AI-сотрудников • API + webhook • White Label • Приоритет", "stars": STARS_BUSINESS, "days": 30},
+    "enterprise": {"title": "AI Centers Enterprise", "description": "Безлимит AI-сотрудников • Все каналы + голос • CRM • API • White Label • Выделенный сервер", "stars": STARS_ENTERPRISE, "days": 30},
 }
+
+# ── Feature matrix per plan ──
+PLAN_FEATURES = {
+    "starter": {
+        "bots": 1,
+        "channels": ["telegram", "whatsapp", "website"],
+        "voice": False,
+        "crm": False,
+        "api": False,
+        "white_label": False,
+        "analytics": False,
+        "priority_support": False,
+        "monthly_stars": 950,    # $19/мес
+        "label": "Starter",
+        "price_setup": "$149",
+        "price_monthly": "$19/мес",
+    },
+    "pro": {
+        "bots": 3,
+        "channels": ["telegram", "whatsapp", "website", "instagram"],
+        "voice": False,
+        "crm": True,
+        "api": False,
+        "white_label": False,
+        "analytics": True,
+        "priority_support": True,
+        "monthly_stars": 2450,   # $49/мес
+        "label": "Pro",
+        "price_setup": "$299",
+        "price_monthly": "$49/мес",
+    },
+    "business": {
+        "bots": 10,
+        "channels": ["telegram", "whatsapp", "website", "instagram"],
+        "voice": True,
+        "crm": True,
+        "api": True,
+        "white_label": True,
+        "analytics": True,
+        "priority_support": True,
+        "monthly_stars": 3950,   # $79/мес
+        "label": "Business",
+        "price_setup": "$499",
+        "price_monthly": "$79/мес",
+    },
+    "enterprise": {
+        "bots": 999,
+        "channels": ["telegram", "whatsapp", "website", "instagram", "phone"],
+        "voice": True,
+        "crm": True,
+        "api": True,
+        "white_label": True,
+        "analytics": True,
+        "priority_support": True,
+        "monthly_stars": 9950,   # $199/мес
+        "label": "Enterprise",
+        "price_setup": "$1499",
+        "price_monthly": "$199/мес",
+    },
+}
+
+def get_plan_features(plan_key: str) -> dict:
+    """Get features for a plan, defaulting to starter."""
+    return PLAN_FEATURES.get(plan_key, PLAN_FEATURES["starter"])
 
 # user_id -> {"paid_until": timestamp, "plan": str}
 paid_users = {}
@@ -122,6 +188,29 @@ async def on_payment(message: types.Message):
     # ── Step 2: Onboarding — ask about business ──
     session["onboarding"] = True
     session["onboarding_step"] = 1
+    session["plan"] = plan_key
+
+    # Show what's included in this plan
+    features = get_plan_features(plan_key)
+    feature_lines = []
+    feature_lines.append(f"👥 AI-сотрудников: <b>{'безлимит' if features['bots'] >= 999 else features['bots']}</b>")
+    ch_names = {"telegram": "Telegram", "whatsapp": "WhatsApp", "website": "Сайт", "instagram": "Instagram", "phone": "📞 Телефон"}
+    ch_list = ", ".join(ch_names.get(c, c) for c in features["channels"])
+    feature_lines.append(f"📱 Каналы: <b>{ch_list}</b>")
+    if features["voice"]:
+        feature_lines.append("🗣 Голосовой AI-секретарь: ✅")
+    if features["crm"]:
+        feature_lines.append("📊 CRM интеграция: ✅")
+    if features["api"]:
+        feature_lines.append("🔌 API + Webhook: ✅")
+    if features["white_label"]:
+        feature_lines.append("🏷 White Label: ✅")
+
+    await message.answer(
+        f"📦 <b>Ваш план {features['label']}:</b>\n\n"
+        + "\n".join(feature_lines) +
+        "\n\nВсё это будет настроено автоматически! Начнём 👇"
+    )
 
     ob_kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🍽 Ресторан / кафе", callback_data="ob_restaurant"),
@@ -132,8 +221,14 @@ async def on_payment(message: types.Message):
          InlineKeyboardButton(text="📦 Другое", callback_data="ob_other")],
     ])
 
+    total_steps = 4
+    if features["voice"]:
+        total_steps += 1
+    if features["crm"]:
+        total_steps += 1
+
     await message.answer(
-        "📋 <b>Шаг 1 из 4 — Ваш бизнес</b>\n\n"
+        f"📋 <b>Шаг 1 из {total_steps} — Ваш бизнес</b>\n\n"
         "Выберите нишу, чтобы AI-ассистент сразу знал специфику вашей работы:",
         reply_markup=ob_kb,
     )

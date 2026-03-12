@@ -90,7 +90,11 @@ async def on_manage_billing(callback: types.CallbackQuery):
     uid = callback.from_user.id
     session = get_session(uid)
     current_plan = paid_users.get(uid, {}).get("plan", "нет")
-    plan_names = {"starter": "Starter ($19/мес)", "pro": "Pro ($49/мес)", "business": "Business ($79/мес)", "week": "Неделя", "month": "Месяц"}
+    plan_names = {
+        "starter": "Starter ($19/мес)", "pro": "Pro ($49/мес)",
+        "business": "Business ($79/мес)", "enterprise": "Enterprise ($199/мес)",
+        "week": "Неделя", "month": "Месяц",
+    }
     plan_display = plan_names.get(current_plan, current_plan)
 
     kb = InlineKeyboardMarkup(inline_keyboard=[
@@ -102,14 +106,21 @@ async def on_manage_billing(callback: types.CallbackQuery):
         f"📦 Текущий план: <b>{plan_display}</b>\n\n"
         f"<b>Что входит в тарифы:</b>\n\n"
         f"⭐ <b>Starter</b> — $149 + $19/мес\n"
-        f"• 1 AI-ассистент, Telegram + WhatsApp\n"
+        f"• 1 AI-ассистент\n"
+        f"• Telegram + WhatsApp + сайт\n"
         f"• Обучение на ваших данных\n\n"
         f"🚀 <b>Pro</b> — $299 + $49/мес\n"
-        f"• 3 AI-ассистента, CRM интеграция\n"
-        f"• Приоритетная поддержка\n\n"
+        f"• 3 AI-ассистента\n"
+        f"• Все каналы + CRM интеграция\n"
+        f"• Аналитика + приоритетная поддержка\n\n"
         f"🏢 <b>Business</b> — $499 + $79/мес\n"
-        f"• 10 AI-ассистентов, API + webhook\n"
-        f"• Персональный менеджер\n\n"
+        f"• 10 AI-ассистентов\n"
+        f"• API + webhook + White Label\n"
+        f"• Голосовой AI-секретарь\n\n"
+        f"👑 <b>Enterprise</b> — $1499 + $199/мес\n"
+        f"• Безлимит AI-ассистентов\n"
+        f"• Все каналы + телефон + CRM\n"
+        f"• API + White Label + выделенный сервер\n\n"
         f"💳 Оплата: Telegram Stars, криптовалюта, банковский перевод",
         reply_markup=kb,
     )
