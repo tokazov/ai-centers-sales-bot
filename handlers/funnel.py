@@ -6,7 +6,7 @@ from aiogram.filters import CommandStart
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 from core import (
-    bot, ADMIN_ID, get_session, detect_lang, t, send_with_voice,
+    bot, ADMIN_ID, get_session, detect_lang, t, send_with_voice, sessions,
 )
 from handlers.payments import send_stars_invoice
 
