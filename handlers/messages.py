@@ -28,6 +28,55 @@ from core import (
 logger = logging.getLogger(__name__)
 router = Router()
 
+async def _show_data_collection(message, session):
+    """Show data collection prompt after all onboarding steps."""
+    niche = session.get("ob_niche_name", "бизнес")
+    biz_name = session.get("ob_biz_name", "Мой бизнес")
+    tasks = session.get("ob_tasks", "общение с клиентами")
+
+    # Build summary of what was configured
+    extras = []
+    if session.get("ob_voice_phone"):
+        extras.append(f"• 🗣 Голос: {session['ob_voice_phone']}")
+    if session.get("ob_crm"):
+        crm_names = {"amocrm": "AmoCRM", "bitrix": "Bitrix24", "hubspot": "HubSpot", "gsheets": "Google Sheets"}
+        extras.append(f"• 📊 CRM: {crm_names.get(session['ob_crm'], session['ob_crm'])}")
+
+    extra_text = "\n".join(extras)
+    if extra_text:
+        extra_text = "\n" + extra_text + "\n"
+
+    summary = (
+        f"🎉 <b>Настройка завершена!</b>\n\n"
+        f"📊 <b>Ваш AI-ассистент:</b>\n"
+        f"• Бизнес: {biz_name} ({niche})\n"
+        f"• Задачи: {tasks[:200]}\n"
+        f"{extra_text}\n"
+        f"⚡ <b>Теперь отправьте материалы для обучения:</b>\n"
+        f"• 📎 Ссылка на сайт\n"
+        f"• 📄 Прайс-лист, меню, FAQ\n"
+        f"• 💬 Примеры переписок с клиентами\n\n"
+        f"Чем больше данных — тем умнее бот. 👇"
+    )
+
+    niche_key = session.get("ob_niche", "other")
+    buttons = [
+        [InlineKeyboardButton(text="📎 Отправить ссылку на сайт", callback_data="ob_send_url")],
+    ]
+    if niche_key == "restaurant":
+        buttons.append([InlineKeyboardButton(text="🍽 Загрузить меню ресторана", callback_data="ob_send_menu")])
+    elif niche_key in ("clinic", "salon"):
+        buttons.append([InlineKeyboardButton(text="📄 Загрузить прайс услуг", callback_data="ob_send_price")])
+    elif niche_key == "shop":
+        buttons.append([InlineKeyboardButton(text="🛍 Загрузить каталог товаров", callback_data="ob_send_catalog")])
+    else:
+        buttons.append([InlineKeyboardButton(text="📄 Загрузить прайс / каталог", callback_data="ob_send_price")])
+    buttons.append([InlineKeyboardButton(text="💬 Написать описание бизнеса", callback_data="ob_send_desc")])
+    buttons.append([InlineKeyboardButton(text="🏠 Главное меню", callback_data="back_menu")])
+
+    await message.answer(summary, reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons))
+
+
 # Cross-module imports (lazy to avoid circular)
 def _get_handle_cu_text():
     from handlers.computer_use import handle_cu_text
@@ -203,17 +252,21 @@ async def on_text(message: types.Message):
         step = session.get("onboarding_step", 0)
         if step == 2:
             # Step 2: got business name → ask tasks
+            from core import get_plan_total_steps
+            total = get_plan_total_steps(session.get("plan", "starter"))
             session["ob_biz_name"] = text.strip()
             session["onboarding_step"] = 3
             await message.answer(
                 f"✅ Компания: <b>{text.strip()}</b>\n\n"
-                f"📋 <b>Шаг 3 из 4 — Задачи ассистента</b>\n\n"
+                f"📋 <b>Шаг 3 из {total} — Задачи ассистента</b>\n\n"
                 f"Что должен делать ваш AI-ассистент?\n"
                 f"Например: <i>Отвечать на вопросы клиентов, принимать заказы, записывать на приём, рассказывать о ценах</i>",
             )
             return
         elif step == 3:
             # Step 3: got tasks → ask channel
+            from core import get_plan_total_steps
+            total = get_plan_total_steps(session.get("plan", "starter"))
             session["ob_tasks"] = text.strip()
             session["onboarding_step"] = 4
             ch_kb = InlineKeyboardMarkup(inline_keyboard=[
@@ -224,10 +277,41 @@ async def on_text(message: types.Message):
             ])
             await message.answer(
                 f"✅ Задачи: <b>{text.strip()[:100]}</b>\n\n"
-                f"📋 <b>Шаг 4 из 4 — Где подключить?</b>\n\n"
+                f"📋 <b>Шаг 4 из {total} — Где подключить?</b>\n\n"
                 f"В каком канале будет работать ваш AI-ассистент?",
                 reply_markup=ch_kb,
             )
+            return
+        elif step == 5:
+            # Step 5: Voice Secretary — got phone number
+            session["ob_voice_phone"] = text.strip()
+            from core import get_plan_total_steps
+            from handlers.payments import get_plan_features
+            total = get_plan_total_steps(session.get("plan", "starter"))
+            features = get_plan_features(session.get("plan", "starter"))
+
+            if features.get("crm"):
+                session["onboarding_step"] = 6
+                crm_kb = InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="AmoCRM", callback_data="ob_crm_amocrm"),
+                     InlineKeyboardButton(text="Bitrix24", callback_data="ob_crm_bitrix")],
+                    [InlineKeyboardButton(text="HubSpot", callback_data="ob_crm_hubspot"),
+                     InlineKeyboardButton(text="Google Sheets", callback_data="ob_crm_gsheets")],
+                    [InlineKeyboardButton(text="🚫 Пока без CRM", callback_data="ob_crm_skip")],
+                ])
+                await message.answer(
+                    f"✅ Телефон: <b>{text.strip()}</b>\n\n"
+                    f"📋 <b>Шаг 6 из {total} — CRM интеграция</b>\n\n"
+                    f"📊 Какую CRM-систему вы используете?\n"
+                    f"AI-ассистент будет автоматически заносить данные клиентов.",
+                    reply_markup=crm_kb,
+                )
+            else:
+                # No CRM → go to data collection
+                session["onboarding_step"] = 0
+                session["onboarding"] = False
+                session["awaiting_data"] = True
+                await _show_data_collection(message, session)
             return
     
     # ── Awaiting bot token from BotFather ──

@@ -223,6 +223,19 @@ async def notify_admin(text: str):
 
 ENGINE_API_URL = os.getenv("ENGINE_API_URL", "https://platform-api-production-f313.up.railway.app")
 
+# ─── Onboarding step helpers ─────────────────────────────────────────────────
+
+def get_plan_total_steps(plan_key: str) -> int:
+    """Get total onboarding steps based on plan features."""
+    from handlers.payments import get_plan_features
+    features = get_plan_features(plan_key)
+    total = 4  # base: niche + name + tasks + channel
+    if features.get("voice"):
+        total += 1
+    if features.get("crm"):
+        total += 1
+    return total
+
 # ─── System Prompts ───────────────────────────────────────────────────────────
 
 SYSTEM_PROMPT = """Ты — AI-консультант компании AI Centers (aicenters.co).

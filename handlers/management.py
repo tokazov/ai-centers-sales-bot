@@ -284,7 +284,7 @@ async def on_ob_send_desc(callback: types.CallbackQuery):
     await callback.answer()
 
 
-@router.callback_query(F.data.startswith("ob_"))
+@router.callback_query(F.data.in_({"ob_restaurant", "ob_clinic", "ob_salon", "ob_shop", "ob_services", "ob_other"}))
 async def on_ob_niche(callback: types.CallbackQuery):
     uid = callback.from_user.id
     session = get_session(uid)
@@ -299,9 +299,12 @@ async def on_ob_niche(callback: types.CallbackQuery):
     }
     session["ob_niche_name"] = niche_names.get(niche, niche)
 
+    from core import get_plan_total_steps
+    total = get_plan_total_steps(session.get("plan", "starter"))
+
     await callback.message.edit_text(
         f"✅ Ниша: <b>{session['ob_niche_name']}</b>\n\n"
-        f"📋 <b>Шаг 2 из 4 — Название бизнеса</b>\n\n"
+        f"📋 <b>Шаг 2 из {total} — Название бизнеса</b>\n\n"
         f"Напишите название вашей компании (как клиенты вас знают).\n"
         f"Например: <i>Ресторан «У Георгия»</i>",
     )
