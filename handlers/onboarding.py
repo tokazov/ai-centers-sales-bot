@@ -4,8 +4,12 @@ import logging
 from aiogram import Router, F, types
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
+import urllib.request as _urllib
+import json as _json
 from core import bot, ADMIN_ID, get_session, detect_lang, t, get_plan_total_steps
 from handlers.payments import get_plan_features
+import os as _os
+PHONE_SECRETARY_URL = _os.environ.get('PHONE_SECRETARY_URL', 'https://ai-phone-secretary-production.up.railway.app')
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -287,6 +291,37 @@ async def on_ob_create_bot(callback: types.CallbackQuery):
     data_count = len(session.get("ob_training_data", []))
     channel_names = {"telegram": "Telegram", "whatsapp": "WhatsApp", "website": "Сайт", "all": "Все каналы"}
 
+    # Step 0: Offer demo call first
+    await callback.message.edit_text(
+        f"🚀 <b>Отлично! Почти готово.</b>\n\n"
+        f"📊 <b>Ваши данные:</b>\n"
+        f"• 🏢 {biz_name} ({niche})\n"
+        f"• 📝 {tasks[:100]}\n"
+        f"• 📱 {channel_names.get(ch, ch)}\n\n"
+        f"{'─' * 25}\n\n"
+        f"🎯 <b>Хотите услышать как будет звучать ваш ассистент?</b>\n\n"
+        f"Позвоните — Алиса ответит от имени компании <b>{biz_name}</b>.\n"
+        f"Это займёт 2 минуты.",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="📞 Сделать тестовый звонок", callback_data="ob_demo_call")],
+            [InlineKeyboardButton(text="⏭ Пропустить, создать ассистента", callback_data="ob_skip_demo")],
+        ]),
+    )
+    await callback.answer()
+    return
+
+
+@router.callback_query(F.data == "ob_skip_demo")
+async def on_ob_skip_demo(callback: types.CallbackQuery):
+    """Skip demo call, go straight to bot creation."""
+    uid = callback.from_user.id
+    session = get_session(uid)
+    biz_name = session.get("ob_biz_name", "Мой бизнес")
+    niche = session.get("ob_niche_name", "бизнес")
+    tasks = session.get("ob_tasks", "")
+    ch = session.get("ob_channel", "telegram")
+    channel_names = {"telegram": "Telegram", "whatsapp": "WhatsApp", "website": "Сайт", "all": "Все каналы"}
+
     # Step 1: Ask to create bot in BotFather
     await callback.message.edit_text(
         f"🚀 <b>Отлично! Создаём бота.</b>\n\n"
@@ -326,3 +361,94 @@ async def on_ob_create_bot(callback: types.CallbackQuery):
             f"📎 Данные ({data_count}):\n{data_summary}")
     except Exception: pass
 
+
+
+# ── Demo call flow ──
+
+@router.callback_query(F.data == "ob_demo_call")
+async def on_ob_demo_call(callback: types.CallbackQuery):
+    """Register caller phone for personalized demo and send call number."""
+    uid = callback.from_user.id
+    session = get_session(uid)
+    
+    biz_name = session.get("ob_biz_name", "Мой бизнес")
+    niche = session.get("ob_niche", "other")
+    
+    await callback.message.edit_text(
+        "📞 <b>Тестовый звонок</b>\n\n"
+        "Введите ваш номер телефона в международном формате:\n"
+        "<code>+7 900 000 00 00</code>\n"
+        "<code>+995 555 000 000</code>\n\n"
+        "Мы настроим ассистента под вашу компанию — и вы услышите его голос 👇"
+    )
+    await callback.answer()
+    session["awaiting_demo_phone"] = True
+
+
+@router.message(F.text)
+async def on_demo_phone_input(message: types.Message):
+    """Handle phone number input for demo call."""
+    uid = message.from_user.id
+    session = get_session(uid)
+    
+    if not session.get("awaiting_demo_phone"):
+        return
+    
+    phone = message.text.strip()
+    # Basic validation
+    digits = "".join(c for c in phone if c.isdigit())
+    if len(digits) < 9:
+        await message.answer("❌ Неверный формат. Введите номер с кодом страны, например: +7 900 000 00 00")
+        return
+    
+    if not phone.startswith("+"):
+        phone = "+" + digits
+    
+    session["awaiting_demo_phone"] = False
+    
+    biz_name = session.get("ob_biz_name", "Мой бизнес")
+    niche = session.get("ob_niche", "other")
+    
+    # Register demo tenant in phone secretary
+    try:
+        payload = _json.dumps({
+            "company_name": biz_name,
+            "niche": niche,
+            "caller_phone": phone,
+            "telegram_chat_id": str(uid)
+        }).encode()
+        req = _urllib.Request(
+            f"{PHONE_SECRETARY_URL}/api/demo",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST"
+        )
+        with _urllib.urlopen(req, timeout=10) as r:
+            result = _json.loads(r.read())
+        
+        if result.get("ok"):
+            await message.answer(
+                f"✅ <b>Готово! Ассистент настроен на компанию «{biz_name}»</b>\n\n"
+                f"📞 Позвоните прямо сейчас:\n"
+                f"<b>+1 (447) 666-2643</b>\n\n"
+                f"Алиса уже знает о вашей компании и ответит как ваш ассистент.\n"
+                f"Ссылка действует 24 часа.",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="✅ Подключить ассистента", callback_data="funnel_pricing")],
+                    [InlineKeyboardButton(text="🔄 Позвонить ещё раз", callback_data="ob_demo_call")],
+                ])
+            )
+        else:
+            raise Exception(result.get("error", "unknown"))
+    
+    except Exception as e:
+        logger.error(f"Demo call setup failed: {e}")
+        # Fallback — give number anyway
+        await message.answer(
+            f"📞 <b>Позвоните для тестового звонка:</b>\n"
+            f"<b>+1 (447) 666-2643</b>\n\n"
+            f"Алиса ответит и расскажет о возможностях AI-ассистента.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="✅ Подключить ассистента", callback_data="funnel_pricing")],
+            ])
+        )
