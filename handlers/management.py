@@ -316,3 +316,25 @@ async def on_ob_niche(callback: types.CallbackQuery):
 # These are handled in the main message handler
 
 
+@router.message(Command("partners"))
+async def cmd_partners(message: types.Message):
+    """Admin only: show all registered partners."""
+    if message.from_user.id != ADMIN_ID:
+        return
+    
+    from core import get_all_partners, get_partners_count
+    partners = get_all_partners()
+    count = get_partners_count()
+    
+    if not partners:
+        await message.answer("👥 Партнёров пока нет.")
+        return
+    
+    lines = [f"👥 <b>Партнёры AI Centers ({count})</b>\n"]
+    for i, (uid, username, full_name, reg_at, referrals) in enumerate(partners, 1):
+        uname = f"@{username}" if username else f"ID:{uid}"
+        date = reg_at[:10] if reg_at else "—"
+        lines.append(f"{i}. {full_name} ({uname}) — {date}")
+    
+    await message.answer("\n".join(lines))
+
