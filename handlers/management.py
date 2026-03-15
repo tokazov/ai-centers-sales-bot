@@ -339,3 +339,23 @@ async def cmd_partners(message: types.Message):
     
     await message.answer("\n".join(lines))
 
+
+
+
+@router.message(Command("stats"))
+async def cmd_stats(message: types.Message):
+    """Admin only: show user statistics."""
+    if message.from_user.id != ADMIN_ID:
+        return
+
+    from core import get_users_stats
+    s = get_users_stats()
+
+    await message.answer(
+        f"📊 <b>Статистика AI Centers Hub Bot</b>\n\n"
+        f"👥 Всего пользователей: <b>{s['total']}</b>\n"
+        f"💰 Платящих: <b>{s['paid']}</b>\n"
+        f"📅 Новых сегодня: <b>{s['today']}</b>\n"
+        f"📈 Новых за 7 дней: <b>{s['week']}</b>\n"
+        f"🔥 Активных сегодня: <b>{s['active_today']}</b>"
+    )
