@@ -110,9 +110,14 @@ async def cmd_start(message: types.Message):
         ])
         await message.answer(partner_text, reply_markup=kb)
         sessions[uid]["mode"] = "partner_registration"
+        # Save to DB
+        from core import register_partner
+        register_partner(uid, message.from_user.username, message.from_user.full_name)
         # Notify admin
         try:
-            await bot.send_message(ADMIN_ID, f"🤝 Новый партнёр!\n@{message.from_user.username or '?'} ({message.from_user.full_name})\nID: {uid}")
+            from core import get_partners_count
+            total = get_partners_count()
+            await bot.send_message(ADMIN_ID, f"🤝 Новый партнёр! #{total}\n@{message.from_user.username or '?'} ({message.from_user.full_name})\nID: {uid}")
         except Exception:
             pass
         logger.info(f"Partner signup: {uid} ({message.from_user.full_name})")
