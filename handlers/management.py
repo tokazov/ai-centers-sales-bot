@@ -2,6 +2,7 @@
 
 import logging
 from aiogram import Router, F, types
+from aiogram.filters import Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 from core import bot, ADMIN_ID, get_session, detect_lang, t
