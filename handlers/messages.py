@@ -160,6 +160,12 @@ async def on_voice(message: types.Message):
 @router.message(F.photo)
 async def on_photo(message: types.Message):
     """Handle screenshots — analyze with Gemini Vision and guide the user."""
+    # Ignore forwarded channel posts and auto-uploads
+    if message.forward_from_chat or message.forward_from:
+        return
+    caption = message.caption or ""
+    if "IG upload" in caption or "upload temp" in caption.lower():
+        return
     uid = message.from_user.id
     if check_rate_limit(uid):
         await message.answer("⏳ Слишком много сообщений.")
