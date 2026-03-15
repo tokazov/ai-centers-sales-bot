@@ -7,6 +7,7 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 from core import (
     bot, ADMIN_ID, get_session, detect_lang, t, send_with_voice, sessions,
+    track_user,
 )
 from handlers.payments import send_stars_invoice
 
@@ -83,6 +84,10 @@ async def cmd_start(message: types.Message):
     uid = message.from_user.id
     lang = detect_lang(message.from_user)
     sessions[uid] = {"history": [], "count": 0, "mode": "receptionist", "persona": None, "lang": lang, "funnel_shown": False, "funnel_step": None}
+    
+    # Track user in DB
+    user = message.from_user
+    track_user(uid, username=user.username, full_name=user.full_name, lang=lang)
     
     # Handle deep links: /start partner, /start buy_starter, etc.
     args = message.text.split(maxsplit=1)[1] if len(message.text.split()) > 1 else ""
@@ -441,5 +446,6 @@ async def on_funnel_question(callback: types.CallbackQuery):
 
     await callback.message.edit_text(t(lang, "ask_question"))
     await callback.answer()
+
 
 
