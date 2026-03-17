@@ -195,16 +195,24 @@ async def on_ob_custom_request(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "ob_bot_stats")
 async def on_ob_bot_stats(callback: types.CallbackQuery):
+    from core import get_users_stats
+    s = get_users_stats()
+    total = s.get("total", 0)
+    paid = s.get("paid", 0)
+    today = s.get("today", 0)
+    week = s.get("week", 0)
+    active_today = s.get("active_today", 0)
+    conv = f"{paid/total*100:.1f}%" if total > 0 else "0%"
     await callback.message.answer(
-        "📊 <b>Статистика бота</b>\n\n"
-        "Статистика будет доступна после первых диалогов с клиентами.\n\n"
-        "Вы увидите:\n"
-        "• 💬 Количество диалогов\n"
-        "• ⭐ Конверсия в заказ/бронь\n"
-        "• 📈 Популярные вопросы\n"
-        "• ⏱ Среднее время ответа\n\n"
-        "Начните привлекать клиентов — данные появятся автоматически!",
+        f"📊 <b>Статистика AI Centers</b>\n\n"
+        f"👥 Всего пользователей: <b>{total}</b>\n"
+        f"💎 Платящих клиентов: <b>{paid}</b>\n"
+        f"📈 Конверсия: <b>{conv}</b>\n\n"
+        f"📅 Сегодня новых: <b>{today}</b>\n"
+        f"🗓 За 7 дней: <b>{week}</b>\n"
+        f"⚡ Активных сегодня: <b>{active_today}</b>",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔄 Обновить", callback_data="ob_bot_stats")],
             [InlineKeyboardButton(text="🏠 Главное меню", callback_data="back_menu")],
         ]),
     )
