@@ -9,6 +9,7 @@ from core import (
     bot, ADMIN_ID, get_session, detect_lang, t, send_with_voice, sessions,
     track_user,
 )
+from i18n import I18N
 from handlers.payments import send_stars_invoice
 
 logger = logging.getLogger(__name__)
